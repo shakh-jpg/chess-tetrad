@@ -119,10 +119,9 @@ svg.bd.shake { animation: shake .3s; }
 .co.cl { fill: var(--co-d); } .co.cd { fill: var(--co-l); }
 .dot { fill: rgba(20, 33, 45, .32); pointer-events: none; }
 .dot-cap { fill: none; stroke: rgba(20, 33, 45, .32); stroke-width: 9; pointer-events: none; }
-.pc { font-family: var(--f-sym); font-size: 80px; cursor: grab; paint-order: stroke fill; stroke-linejoin: round; }
-.pc.w { fill: var(--pw-fill); stroke: var(--pw-stroke); stroke-width: 3.2px; }
-.pc.b { fill: var(--pb-fill); stroke: var(--pb-stroke); stroke-width: 1.6px; }
+.pc { cursor: grab; }
 .pc.ghost { pointer-events: none; cursor: grabbing; }
+.pico { width: 82%; height: 82%; display: block; margin: auto; pointer-events: none; }
 .arrow path { fill: var(--arrow-eng); pointer-events: none; }
 .arrow.hint path { fill: var(--arrow-hint); }
 .promo { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(10, 16, 22, .45); border-radius: 4px; z-index: 5; }
@@ -256,3 +255,23 @@ svg.bd.shake { animation: shake .3s; }
 .pg-bar i { display: block; height: 100%; background: var(--accent, #6d8cff); }
 .pg-n { text-align: right; color: var(--muted); }
 @media (max-width: 560px) { .pg-sum { grid-template-columns: repeat(2, 1fr); } }
+
+/* ---- Stage 2: SVG piece icons, phone menu, PWA bars ---- */
+.pbtn, .pal:not(.erase) { padding: 3px; display: grid; place-items: center; }
+.pal .pico { width: auto; height: 100%; }
+#btn-menu { display: none; }
+@media (max-width: 899px) {
+  .top { position: relative; }
+  #btn-menu { display: inline-flex; }
+  .top-actions { display: none; position: absolute; top: 44px; right: 0; z-index: 35; flex-direction: column; align-items: stretch;
+    min-width: min(260px, 92vw); padding: 8px; gap: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(8, 13, 18, .35); }
+  .top.menu-open .top-actions { display: flex; }
+  .top-actions .btn { justify-content: flex-start; padding: 10px 12px; }
+}
+.pwa-bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(14px + env(safe-area-inset-bottom, 0px)); z-index: 45;
+  display: flex; gap: 10px; align-items: center; max-width: min(94vw, 560px); padding: 10px 12px; border-radius: 10px;
+  background: var(--panel); color: var(--ink); border: 1px solid var(--accent); box-shadow: 0 10px 30px rgba(8, 13, 18, .35); }
+.pwa-bar span { flex: 1; font-size: 13px; }
+.ios-steps { padding-left: 20px; display: flex; flex-direction: column; gap: 8px; }
+.ios-steps b { font-weight: 600; }

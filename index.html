@@ -4,13 +4,25 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Шахматная тетрадь</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;1,7..72,400&family=Noto+Sans+Symbols+2&display=swap">
+<meta name="description" content="Партии, варианты и задачи с повторением. Работает без интернета.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="theme-color" content="#E9EDF1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0E141A" media="(prefers-color-scheme: dark)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Тетрадь">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 </head>
 <body>
 <div id="app">
   <header class="top">
     <div class="brand">Шахматная тетрадь</div>
-    <div class="top-actions">
+    <button class="btn" id="btn-menu" aria-expanded="false" aria-controls="top-actions" aria-label="Меню">☰ Меню</button>
+    <div class="top-actions" id="top-actions">
+      <button class="btn" id="btn-install" hidden>Установить</button>
       <button class="btn primary" id="btn-import">Загрузить книгу</button>
       <button class="btn" id="btn-diagram">Диаграмма</button>
       <button class="btn" id="btn-setup">Расставить позицию</button>

@@ -2,12 +2,13 @@
 // Moved from the prototype's main IIFE; module-level code now, behaviour unchanged.
 import { Chess as C } from '../core/chess.js';
 import { Core } from '../core/index.js';
-import { Engine } from '../engine/engine.js';
+import { Engine, STOCKFISH_NAME } from '../engine/engine.js';
+import { scoreText, whiteShare } from '../engine/uci.js';
 import { Recog } from '../recognition/recog.js';
 import { Samples } from '../recognition/samples.js';
 import { Store } from '../storage/store.js';
-import { FILES, GL, fenToMap, mapToFen, kingSq } from '../board/position.js';
-import { boardSVG, sqFromEvent, svgPoint } from '../board/svg.js';
+import { FILES, fenToMap, mapToFen, kingSq } from '../board/position.js';
+import { boardSVG, sqFromEvent, svgPoint, ensurePieceSprite, pieceIcon } from '../board/svg.js';
 import { loadPdfjs, fileToText } from '../pdf-import/files.js';
 import { newStat, applyResult, bumpLog, streak as srsStreak, statLabel, dayKey } from '../srs/srs.js';
 import { createLive } from '../live/live.js';
@@ -100,7 +101,7 @@ import { $, $$, esc, uid, lsGet, lsSet } from './util.js';
     var side = m.color, wrap = $('#boardwrap'), box = document.createElement('div');
     box.className = 'promo';
     box.innerHTML = '<div class="promo-in"><span>Превратить в</span>' + ['q', 'r', 'b', 'n'].map(function (p) {
-      return '<button class="pbtn ' + side + '" data-p="' + p + '" aria-label="' + p + '">' + GL[p.toUpperCase()] + '</button>';
+      return '<button class="pbtn ' + side + '" data-p="' + p + '" aria-label="' + p + '">' + pieceIcon(side + p.toUpperCase()) + '</button>';
     }).join('') + '</div>';
     wrap.appendChild(box);
     box.addEventListener('click', function (e) {
@@ -338,18 +339,7 @@ import { $, $$, esc, uid, lsGet, lsSet } from './util.js';
     }).join('');
   }
 
-  // ================= движок =================
-  function scoreText(l) {
-    if (!l) return '';
-    var sign = l.turn === 'w' ? 1 : -1;
-    if (l.mate != null) { var m = l.mate * sign; return (m > 0 ? '+' : '−') + '#' + Math.abs(m); }
-    var v = l.cp * sign / 100; return (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(2);
-  }
-  function whiteShare(l) {
-    var sign = l.turn === 'w' ? 1 : -1;
-    if (l.mate != null) return l.mate * sign > 0 ? 100 : 0;
-    return 100 / (1 + Math.exp(-(l.cp * sign) / 400));
-  }
+  // ================= движок (оценка: engine/uci.js) =================
   function pvToSan(fen, pv, n) {
     var g = new C(fen), out = [], moveNo = parseInt(fen.split(' ')[5], 10) || 1, turn = fen.split(' ')[1];
     for (var i = 0; i < pv.length && i < n; i++) {
@@ -369,7 +359,7 @@ import { $, $$, esc, uid, lsGet, lsSet } from './util.js';
     if (!host) return;
     var lines = Object.keys(S.engineLines).sort().map(function (k) { return S.engineLines[k]; });
     if (!S.engineOn) { host.innerHTML = '<p class="empty-note">Движок выключен. Он показывает оценку позиции и лучшие продолжения.</p>'; if (bar) bar.style.height = '50%'; return; }
-    var status = S.engineKind === 'stockfish' ? 'Stockfish 10' : S.engineKind === 'fallback' ? 'Встроенный простой движок (слабее Stockfish)' : S.engineKind === 'none' ? 'Движок не удалось запустить' : 'Запуск движка…';
+    var status = S.engineKind === 'stockfish' ? STOCKFISH_NAME : S.engineKind === 'fallback' ? 'Встроенный простой движок (слабее Stockfish)' : S.engineKind === 'none' ? 'Движок не удалось запустить' : 'Запуск движка…';
     var html = '<div class="eng-status">' + esc(status) + (lines[0] ? ' · глубина ' + lines[0].depth : '') + '</div>';
     lines.forEach(function (l, i) {
       html += '<div class="eng-line"><span class="eng-score">' + scoreText(l) + '</span><span class="eng-pv">' + esc(pvToSan(S.cur.fen, l.pv, 9)) + '</span><button class="icon-btn" data-addpv="' + (i + 1) + '" title="Добавить линию в партию как вариант" aria-label="Добавить линию">+</button></div>';
@@ -556,7 +546,8 @@ import { $, $$, esc, uid, lsGet, lsSet } from './util.js';
   }
   function openData() {
     var cnt = S.books.reduce(function (n, b) { return n + b.items.length; }, 0);
-    var m = openModal('<h3>Данные</h3><p class="hint-note">Библиотека хранится только в этом браузере. Если очистить данные сайта или сменить браузер, она пропадёт. Храните копию отдельно. Сейчас в библиотеке: книг ' + S.books.length + ', записей ' + cnt + '.' + (Store.persistent ? '' : ' Хранилище браузера недоступно, всё лежит только до закрытия страницы.') + '</p>' +
+    var m = openModal('<h3>Данные</h3><p class="hint-note">Библиотека хранится только в этом браузере. Если очистить данные сайта или сменить браузер, она пропадёт. Храните копию отдельно. Сейчас в библиотеке: книг ' + S.books.length + ', записей ' + cnt + '.' + (Store.persistent ? '' : ' Хранилище браузера недоступно, всё лежит только до закрытия страницы.') +
+      (/^(persisted|granted)$/.test(lsGet('st.persist', '')) ? ' Браузер разрешил хранить библиотеку постоянно.' : (Store.persistent ? ' Браузер может удалить данные, если на устройстве мало места.' : '')) + '</p>' +
       '<div class="data-list">' +
       '<button class="btn primary" id="dt-backup">Скачать копию библиотеки (JSON)</button>' +
       '<label class="btn"><input id="dt-restore" type="file" accept=".json,application/json" hidden>Загрузить копию библиотеки</label>' +
@@ -625,11 +616,12 @@ import { $, $$, esc, uid, lsGet, lsSet } from './util.js';
       if (d.moved) {
         var ghost = $('.ghost', svg);
         if (!ghost) {
-          ghost = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-          ghost.setAttribute('class', 'pc ghost ' + d.piece[0]); ghost.setAttribute('text-anchor', 'middle'); ghost.textContent = GL[d.piece[1]];
+          ghost = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+          ghost.setAttribute('class', 'pc ghost ' + d.piece[0]); ghost.setAttribute('href', '#pc-' + d.piece);
+          ghost.setAttribute('width', '100'); ghost.setAttribute('height', '100');
           svg.appendChild(ghost);
         }
-        var p = svgPoint(svg, e); ghost.setAttribute('x', p.x); ghost.setAttribute('y', p.y + 28);
+        var p = svgPoint(svg, e); ghost.setAttribute('x', p.x - 50); ghost.setAttribute('y', p.y - 50);
       }
     });
     function endDrag(e) {
@@ -859,7 +851,7 @@ import { $, $$, esc, uid, lsGet, lsSet } from './util.js';
     var pal = ['K', 'Q', 'R', 'B', 'N', 'P'];
     var m = openModal('<h3>Расстановка позиции</h3><div class="ed-grid">' +
       '<div><div id="ed-board" class="ed-board"></div><div class="palette" id="palette">' +
-      ['w', 'b'].map(function (c) { return '<div class="prow">' + pal.map(function (p) { return '<button class="pal ' + c + '" data-t="' + c + p + '" aria-label="' + c + p + '">' + GL[p] + '</button>'; }).join('') + '</div>'; }).join('') +
+      ['w', 'b'].map(function (c) { return '<div class="prow">' + pal.map(function (p) { return '<button class="pal ' + c + '" data-t="' + c + p + '" aria-label="' + c + p + '">' + pieceIcon(c + p) + '</button>'; }).join('') + '</div>'; }).join('') +
       '<div class="prow"><button class="pal erase" data-t="x">Убрать</button><button class="pal erase" id="pe-clear-all" title="Убрать все фигуры с доски">Очистить доску</button></div></div></div>' +
       '<div class="ed-side">' +
       (init.low && Object.keys(init.low).length ? '<p class="status warn">Оранжевым отмечены клетки, в которых распознавание не уверено. Проверьте их.</p>' : '') +
@@ -1058,9 +1050,15 @@ import { $, $$, esc, uid, lsGet, lsSet } from './util.js';
       if (errShown) return; errShown = true;
       var t = $('#toast'); if (t) { t.textContent = 'Ошибка в приложении: ' + (ev && ev.message ? ev.message : 'неизвестная') + '. Обновите страницу.'; t.className = 'toast show bad'; }
     });
+    ensurePieceSprite();
+    Store.setErrorHandler(function (op, why) {
+      toast((op === 'delete' ? 'Не удалось удалить: ' : op === 'read' ? 'Не удалось прочитать библиотеку: ' : 'Не удалось сохранить: ') + why + '. Сделайте копию в «Данные».', 'warn');
+    });
     bindUI();
     renderAll();
     await Store.open();
+    // First launch: ask the browser to keep the library (no eviction under storage pressure).
+    if (!lsGet('st.persist', null)) Store.requestPersistence().then(function (r) { lsSet('st.persist', r); });
     var allRecs = await Store.all();
     Samples.load(allRecs.filter(function (b) { return b.id === '__recog'; })[0]);
     S.books = allRecs.filter(function (b) { return b.id !== '__recog'; }).sort(function (a, b) { return a.created - b.created; });
@@ -1079,3 +1077,5 @@ import { $, $$, esc, uid, lsGet, lsSet } from './util.js';
 export function start() {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 }
+
+export { openModal };
