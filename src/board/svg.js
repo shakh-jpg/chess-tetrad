@@ -1,6 +1,28 @@
 // SVG board rendering and pointer-to-square mapping.
 // Moved verbatim from the prototype (shakhmatnaya-tetrad_artifact_2026-11-13.html); see git history.
-import { FILES, GL } from './position.js';
+import { FILES } from './position.js';
+import { PIECES } from './pieces.js';
+
+// Stage 2: pieces are SVG (cburnett set) instead of font glyphs, so they look
+// the same on every device and work offline. One hidden sprite with <symbol>s
+// is added to the document; boards reference it with <use href="#pc-wK">.
+var SPRITE_ID = 'piece-sprite';
+function pieceSpriteMarkup() {
+  return '<svg id="' + SPRITE_ID + '" xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true"><defs>' +
+    Object.keys(PIECES).map(function (k) { return '<symbol id="pc-' + k + '" viewBox="0 0 45 45">' + PIECES[k] + '</symbol>'; }).join('') +
+    '</defs></svg>';
+}
+function ensurePieceSprite(doc) {
+  doc = doc || document;
+  if (doc.getElementById(SPRITE_ID)) return;
+  var holder = doc.createElement('div');
+  holder.innerHTML = pieceSpriteMarkup();
+  doc.body.insertBefore(holder.firstChild, doc.body.firstChild);
+}
+// Small standalone icon (promotion dialog, position editor palette).
+function pieceIcon(code) {
+  return '<svg class="pico" viewBox="0 0 45 45" aria-hidden="true"><use href="#pc-' + code + '"/></svg>';
+}
 
 function boardSVG(pieces, o) {
   o = o || {};
@@ -27,7 +49,7 @@ function boardSVG(pieces, o) {
     if (o.dragSq === k) continue;
     var pf = FILES.indexOf(k[0]), pr = parseInt(k[1], 10), p = pieces[k];
     var px = (fl ? 7 - pf : pf) * 100 + 50, py = (fl ? pr - 1 : 8 - pr) * 100 + 50;
-    s += '<text x="' + px + '" y="' + (py + 28) + '" text-anchor="middle" class="pc ' + p[0] + '" data-sq="' + k + '">' + GL[p[1]] + '</text>';
+    s += '<use href="#pc-' + p + '" x="' + (px - 50) + '" y="' + (py - 50) + '" width="100" height="100" class="pc ' + p[0] + '" data-sq="' + k + '"/>';
   }
   (o.marks || []).forEach(function (q) {
     var mf = FILES.indexOf(q[0]), mr = parseInt(q[1], 10);
@@ -54,4 +76,4 @@ function svgPoint(svg, e) {
   return { x: (e.clientX - r.left) / r.width * 800, y: (e.clientY - r.top) / r.height * 800 };
 }
 
-export { boardSVG, sqFromEvent, svgPoint };
+export { boardSVG, sqFromEvent, svgPoint, ensurePieceSprite, pieceIcon, pieceSpriteMarkup };
