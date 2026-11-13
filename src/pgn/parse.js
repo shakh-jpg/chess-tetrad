@@ -90,8 +90,14 @@ import { START, makeRoot, tryMove, NAGMAP, toMovetext } from '../core/tree.js';
       var l = lines[i].replace(/\s+/g, ' ').trim();
       if (l.length < 3) continue;
       if (/^[\d\s.,–—-]+$/.test(l)) continue;
+      // Fix (stage 1): text that belongs to the previous game is never a title.
+      // PGN tag lines are skipped; a line ending with a result or a numbered move line
+      // is the end of the previous game, so there is no heading of our own above it.
+      if (/^\[[A-Za-z0-9]+\s+"[^"]*"\]$/.test(l)) continue;
+      if (/(^|\s)(1-0|0-1|1\/2-1\/2|½-½|\*)$/.test(l)) return fallback;
       if (/^(стр(аница)?\.?|page)\s*\d+/i.test(l)) continue;
       var sans = tokenize(l).filter(function (t) { return t.t === 'san'; }).length;
+      if (sans >= 1 && /^\d{1,3}\s*\./.test(l)) return fallback;
       if (sans >= 2) continue;
       l = l.replace(/[:;,\s]+$/, '');
       if (l.length > 90) l = l.slice(0, 88) + '…';
@@ -269,6 +275,9 @@ import { START, makeRoot, tryMove, NAGMAP, toMovetext } from '../core/tree.js';
       if (t.White || t.Black) {
         title = (t.White || '?') + ' — ' + (t.Black || '?');
         if (t.Event && t.Event !== '?') title += ' (' + t.Event + (t.Date && t.Date !== '????.??.??' ? ', ' + t.Date.slice(0, 4) : '') + ')';
+      } else if (t.Event && t.Event !== '?') {
+        // Fix (stage 1): a tagged game without players (typical for puzzles with [FEN]) is named by its Event tag.
+        title = t.Event;
       }
       if (!title) title = guessTitle(text, g.pos, (isPuzzle ? 'Задача ' : 'Партия ') + n);
       items.push({
