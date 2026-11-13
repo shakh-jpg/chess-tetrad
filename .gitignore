@@ -11,3 +11,8 @@ Thumbs.db
 *.pdf
 *.epub
 *.djvu
+
+# Generated from node_modules by scripts/copy-engine.mjs
+public/engine/
+*.docx
+*.fb2
