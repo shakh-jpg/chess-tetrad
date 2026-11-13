@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Шахматная тетрадь</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;1,7..72,400&family=Noto+Sans+Symbols+2&display=swap">
+</head>
+<body>
+<div id="app">
+  <header class="top">
+    <div class="brand">Шахматная тетрадь</div>
+    <div class="top-actions">
+      <button class="btn primary" id="btn-import">Загрузить книгу</button>
+      <button class="btn" id="btn-diagram">Диаграмма</button>
+      <button class="btn" id="btn-setup">Расставить позицию</button>
+      <button class="btn" id="btn-live" hidden>Урок</button>
+      <button class="btn" id="btn-progress">Прогресс</button>
+      <button class="btn" id="btn-data">Данные</button>
+      <button class="btn" id="btn-theme" aria-label="Сменить тему">Тема</button>
+    </div>
+    <nav class="tabs" aria-label="Разделы">
+      <button class="tab" data-pane="lib" aria-selected="false">Библиотека</button>
+      <button class="tab" data-pane="board" aria-selected="true">Доска</button>
+      <button class="tab" data-pane="notes" aria-selected="false">Ходы</button>
+    </nav>
+  </header>
+
+  <div class="ban livebar" id="livebar" hidden></div>
+
+  <main class="layout" id="layout" data-pane="board">
+    <aside class="pane lib" id="pane-lib">
+      <div class="lib-head"><h2>Библиотека</h2></div>
+      <div class="books" id="books"></div>
+      <div class="filters">
+        <button class="chip on" data-f="all">Все</button>
+        <button class="chip" data-f="game">Партии</button>
+        <button class="chip" data-f="puzzle">Задачи</button>
+        <input id="q" type="search" placeholder="Поиск по названию" aria-label="Поиск по названию">
+      </div>
+      <div class="items" id="items"></div>
+    </aside>
+
+    <section class="pane stage" id="pane-board">
+      <div class="stage-head"><h2 id="itemtitle"></h2><p id="itemsub"></p></div>
+      <div id="banner"></div>
+      <div class="board-row">
+        <div class="evalbar" id="evalbar" aria-hidden="true"><i id="evalfill"></i></div>
+        <div class="board-wrap" id="boardwrap"><div id="board"></div></div>
+      </div>
+      <div class="turnline" id="turnline" aria-live="polite"></div>
+      <div class="controls">
+        <button class="btn" data-nav="first" aria-label="В начало">⏮</button>
+        <button class="btn" data-nav="prev" aria-label="Назад">◀</button>
+        <button class="btn" data-nav="next" aria-label="Вперёд">▶</button>
+        <button class="btn" data-nav="last" aria-label="В конец">⏭</button>
+        <button class="btn" data-act="flip">Перевернуть</button>
+        <button class="btn" id="btn-draw" aria-pressed="false" title="Рисовать стрелки и отмечать клетки. Правая кнопка мыши делает то же всегда.">Рисовать</button>
+        <button class="btn" data-act="cleardraw">Стереть</button>
+        <select id="notation" aria-label="Запись ходов">
+          <option value="fig">Фигурки ♘f3</option>
+          <option value="ru">Буквы Кf3</option>
+          <option value="en">English Nf3</option>
+        </select>
+      </div>
+    </section>
+
+    <aside class="pane notes" id="pane-notes">
+      <div class="sec-head"><h3>Ходы</h3>
+        <div class="tools" id="movetools">
+          <button class="btn" data-act="promote">Сделать основным</button>
+          <button class="btn" data-act="delmove">Удалить ход</button>
+        </div>
+      </div>
+      <div class="moves" id="moves" aria-label="Список ходов"></div>
+      <div class="cm-panel" id="cmpanel" hidden>
+        <div class="nagrow" id="nagrow" role="group" aria-label="Оценка хода">
+          <button class="btn nagb" data-nag="!" title="Хороший ход">!</button><button class="btn nagb" data-nag="!!" title="Отличный ход">!!</button><button class="btn nagb" data-nag="!?" title="Интересный ход">!?</button><button class="btn nagb" data-nag="?!" title="Сомнительный ход">?!</button><button class="btn nagb" data-nag="?" title="Ошибка">?</button><button class="btn nagb" data-nag="??" title="Грубая ошибка">??</button>
+        </div>
+        <textarea id="cmtext" rows="3" placeholder="Комментарий к ходу (виден ученику на уроке)" aria-label="Комментарий к ходу"></textarea>
+      </div>
+      <div class="tools"><button class="btn" data-act="copyfen">Скопировать FEN</button></div>
+      <div class="sec-head"><h3>Движок</h3><button class="btn" id="engine-toggle" aria-pressed="false">Включить</button></div>
+      <div class="engine" id="engine"></div>
+    </aside>
+  </main>
+</div>
+<div id="modal-root"></div>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
