@@ -1,11 +1,33 @@
 // Storage: IndexedDB with in-memory fallback.
-// Moved verbatim from the prototype (shakhmatnaya-tetrad_artifact_2026-11-13.html); see git history.
-var Store = (function () {
-  var db = null, mem = {}, useMem = false, timers = {};
+// Based on the prototype's Store. Stage 2 changes:
+//  - write/delete errors are no longer swallowed: they resolve to false and call onError
+//    (the UI shows a toast), e.g. when the disk quota is exhausted;
+//  - requestPersistence() asks the browser not to evict the data (navigator.storage.persist);
+//  - createStore(deps) allows tests to inject a fake indexedDB / navigator.storage.
+
+export function describeError(e) {
+  var name = e && (e.name || (e.target && e.target.error && e.target.error.name));
+  if (name === 'QuotaExceededError') return 'на устройстве закончилось место для данных сайта';
+  var msg = e && (e.message || (e.target && e.target.error && e.target.error.message));
+  return msg || name || 'неизвестная ошибка';
+}
+
+export function createStore(deps) {
+  deps = deps || {};
+  var idb = deps.indexedDB !== undefined ? deps.indexedDB : (typeof indexedDB !== 'undefined' ? indexedDB : null);
+  var storage = deps.storage !== undefined ? deps.storage : (typeof navigator !== 'undefined' && navigator.storage ? navigator.storage : null);
+  var dbName = deps.dbName || 'shakhmatnaya-tetrad';
+  var db = null, mem = {}, useMem = false, timers = {}, onError = null;
+
+  function fail(op, e) {
+    if (onError) { try { onError(op, describeError(e), e); } catch (x) {} }
+    return false;
+  }
   function open() {
     return new Promise(function (res) {
       try {
-        var rq = indexedDB.open('shakhmatnaya-tetrad', 1);
+        if (!idb) throw new Error('no indexedDB');
+        var rq = idb.open(dbName, 1);
         rq.onupgradeneeded = function () { rq.result.createObjectStore('books', { keyPath: 'id' }); };
         rq.onsuccess = function () { db = rq.result; res(); };
         rq.onerror = rq.onblocked = function () { useMem = true; res(); };
@@ -17,30 +39,51 @@ var Store = (function () {
     return new Promise(function (res) {
       try {
         var rq = db.transaction('books').objectStore('books').getAll();
-        rq.onsuccess = function () { res(rq.result || []); }; rq.onerror = function () { res([]); };
-      } catch (e) { res([]); }
+        rq.onsuccess = function () { res(rq.result || []); };
+        rq.onerror = function (e) { fail('read', e); res([]); };
+      } catch (e) { fail('read', e); res([]); }
     });
   }
-  function put(b) {
-    mem[b.id] = b;
-    if (useMem || !db) return Promise.resolve();
+  function write(op, fn) {
+    if (useMem || !db) return Promise.resolve(true);
     return new Promise(function (res) {
-      try { var tx = db.transaction('books', 'readwrite'); tx.objectStore('books').put(b); tx.oncomplete = res; tx.onerror = res; } catch (e) { res(); }
+      var done = false;
+      function ok() { if (!done) { done = true; res(true); } }
+      function bad(e) { if (!done) { done = true; res(fail(op, e)); } }
+      try {
+        var tx = db.transaction('books', 'readwrite');
+        fn(tx.objectStore('books'));
+        tx.oncomplete = ok;
+        tx.onerror = function (e) { bad(tx.error || e); };
+        tx.onabort = function (e) { bad(tx.error || e); };
+      } catch (e) { bad(e); }
     });
   }
-  function del(id) {
-    delete mem[id];
-    if (useMem || !db) return Promise.resolve();
-    return new Promise(function (res) {
-      try { var tx = db.transaction('books', 'readwrite'); tx.objectStore('books').delete(id); tx.oncomplete = res; tx.onerror = res; } catch (e) { res(); }
-    });
-  }
+  // Resolve to true on success, false on failure (onError has been called).
+  function put(b) { mem[b.id] = b; return write('save', function (os) { os.put(b); }); }
+  function del(id) { delete mem[id]; return write('delete', function (os) { os.delete(id); }); }
   function save(b) {
     clearTimeout(timers[b.id]);
     timers[b.id] = setTimeout(function () { put(JSON.parse(JSON.stringify(b))); }, 350);
   }
-  return { open: open, all: all, put: put, del: del, save: save, get persistent() { return !useMem && !!db; } };
-})();
+  // Ask the browser to keep the data (not evict it under storage pressure).
+  // Resolves to 'persisted' | 'granted' | 'denied' | 'unsupported'.
+  function requestPersistence() {
+    if (!storage || !storage.persist) return Promise.resolve('unsupported');
+    var already = storage.persisted ? storage.persisted() : Promise.resolve(false);
+    return Promise.resolve(already).then(function (p) {
+      if (p) return 'persisted';
+      return Promise.resolve(storage.persist()).then(function (g) { return g ? 'granted' : 'denied'; });
+    }).catch(function () { return 'unsupported'; });
+  }
+  return {
+    open: open, all: all, put: put, del: del, save: save, requestPersistence: requestPersistence,
+    setErrorHandler: function (fn) { onError = fn; },
+    get persistent() { return !useMem && !!db; }
+  };
+}
+
+var Store = createStore();
 
 export { Store };
 export default Store;
