@@ -24,6 +24,11 @@ export function isEarlyRepeat(st, kind, now) {
 // Mutates and returns st.
 export function applyResult(st, kind, now) {
   if (now === undefined) now = Date.now();
+  if (isEarlyRepeat(st, kind, now)) {
+    // Fix (stage 1): an early repeat is practice only; box, due date and the last result stay.
+    st.n++; st.ok++; st.last = now;
+    return st;
+  }
   st.n++; st.last = now; st.res = kind;
   if (kind === 'fail') { st.fail++; st.box = 0; st.due = now; }
   else {
