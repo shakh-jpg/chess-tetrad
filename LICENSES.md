@@ -13,6 +13,7 @@ It ships the Stockfish chess engine (GPL-3.0), so the whole app is open source.
 | pdfjs-dist (Mozilla pdf.js) | 3.11.174 | Apache-2.0 | Bundled, loaded lazily when a PDF is opened. |
 | JSZip | 3.10.1 | MIT OR GPL-3.0-or-later (used under MIT) | Bundled, loaded lazily for EPUB/DOCX. Pulls in pako (MIT AND Zlib), lie (MIT), immediate (MIT), readable-stream (MIT), setimmediate (MIT) and small MIT helpers. |
 | path2d-polyfill | 2.0.1 | MIT | Dependency of pdfjs-dist (Node-only path, not used in the browser). |
+| @supabase/supabase-js (+ auth-js, postgrest-js, realtime-js, storage-js, functions-js, phoenix, iceberg-js) | 2.119.0 | MIT | Bundled as a lazy chunk; loaded only when the cloud is configured (stage 4). |
 | IBM Plex Sans, IBM Plex Mono (via @fontsource) | 5.3.0 | SIL Open Font License 1.1 | Bundled font files (no Google Fonts requests). |
 | Literata (via @fontsource) | 5.3.0 | SIL Open Font License 1.1 | Bundled font files. |
 | Noto Sans Symbols 2, "symbols" subset (via @fontsource) | 5.3.0 | SIL Open Font License 1.1 | Bundled; chess glyphs for figurine notation and diagram recognition. |
@@ -26,6 +27,7 @@ Nothing is loaded from a CDN any more (stage 2): engine, fonts, pdf.js and JSZip
 | Vite | MIT |
 | Vitest | MIT |
 | fake-indexeddb (storage tests) | Apache-2.0 |
+| @electric-sql/pglite (runs the SQL migration and RLS tests in Postgres/WASM) | Apache-2.0 (Postgres itself: PostgreSQL License) |
 | @resvg/resvg-js (renders the PNG icons once, `npm run icons`) | MPL-2.0 |
 
 ## Content
