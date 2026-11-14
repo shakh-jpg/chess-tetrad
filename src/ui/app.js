@@ -14,6 +14,7 @@ import { newStat, applyResult, bumpLog, streak as srsStreak, statLabel, dayKey }
 import { createLive } from '../live/live.js';
 import { sampleBook } from './sample-book.js';
 import { $, $$, esc, uid, lsGet, lsSet } from './util.js';
+import { countLabel, pliesLabel } from './plural.js';
 
   var activeEditor = null;
 
@@ -281,7 +282,7 @@ import { $, $$, esc, uid, lsGet, lsSet } from './util.js';
     $('#itemtitle').textContent = it ? it.title : 'Выберите партию или задачу';
     var sub = '';
     if (it) {
-      sub = (it.type === 'puzzle' ? 'Задача' : 'Партия') + (it.note ? ' · ' + it.note : '') + (it.plies ? ' · ' + it.plies + ' полуходов' : '') + (it.result ? ' · ' + it.result : '') + (it.section ? ' · ' + it.section : (S.book ? ' · ' + S.book.name : ''));
+      sub = (it.type === 'puzzle' ? 'Задача' : 'Партия') + (it.note ? ' · ' + it.note : '') + (it.plies ? ' · ' + pliesLabel(it.plies) : '') + (it.result ? ' · ' + it.result : '') + (it.section ? ' · ' + it.section : (S.book ? ' · ' + S.book.name : ''));
     } else sub = 'Загрузите книгу или откройте пример слева';
     $('#itemsub').textContent = sub;
 
@@ -492,7 +493,7 @@ import { $, $$, esc, uid, lsGet, lsSet } from './util.js';
     var log = lsGet('st.log', {}), streak = srsStreak(log, Date.now());
     due.sort(function (a, b) { return a.d - b.d; });
     var m = openModal('<h3>Прогресс</h3>' + (tot ? '<div class="pg-sum"><div><b>' + clean + '</b><span>решено сразу</span></div><div><b>' + help + '</b><span>с ошибками или подсказкой</span></div><div><b>' + fail + '</b><span>не решено</span></div><div><b>' + none + '</b><span>ещё не пробовали</span></div></div>' +
-      '<p class="hint-note">Занимались сегодня: ' + (log[dayKey(Date.now())] || 0) + ' задач. Дней подряд: ' + streak + '. Прогресс хранится в этом браузере и попадает в копию библиотеки.</p>' +
+      '<p class="hint-note">Занимались сегодня: ' + countLabel(log[dayKey(Date.now())] || 0, 'задача', 'задачи', 'задач') + '. Дней подряд: ' + streak + '. Прогресс хранится в этом браузере и попадает в копию библиотеки.</p>' +
       '<div class="pg-list">' + rows.join('') + '</div>' : '<p class="empty-note">Пока нет задач. Загрузите книгу с задачами, и здесь появится ваш прогресс.</p>') +
       '<div class="modal-act"><button class="btn" id="pg-reset">Сбросить прогресс</button><button class="btn" data-close>Закрыть</button><button class="btn primary" id="pg-rep"' + (due.length ? '' : ' disabled') + '>Повторить (' + due.length + ')</button></div>');
     $('#pg-rep', m.el).addEventListener('click', function () {
@@ -838,7 +839,7 @@ import { $, $$, esc, uid, lsGet, lsSet } from './util.js';
       if (!chosen.length) { toast('Ничего не выбрано'); return; }
       var book = { id: uid('b'), name: $('#rv-name', m.el).value.trim() || name, created: Date.now(), items: chosen.map(function (it) { it.id = uid('i'); return it; }) };
       S.books.push(book); Store.put(JSON.parse(JSON.stringify(book)));
-      S.book = book; m.close(); toast('Добавлено: ' + chosen.length + ' записей'); renderAll();
+      S.book = book; m.close(); toast('Добавлено: ' + countLabel(chosen.length, 'запись', 'записи', 'записей')); renderAll();
       if (window.innerWidth < 900) { S.pane = 'lib'; renderPane(); }
     });
   }
