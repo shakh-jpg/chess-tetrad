@@ -275,3 +275,16 @@ svg.bd.shake { animation: shake .3s; }
 .pwa-bar span { flex: 1; font-size: 13px; }
 .ios-steps { padding-left: 20px; display: flex; flex-direction: column; gap: 8px; }
 .ios-steps b { font-weight: 600; }
+
+/* ---- Stage 4: account / cloud ---- */
+.acc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.acc-card { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel2); margin: 8px 0; }
+.acc-card h4, #acc-body h4 { margin: 6px 0 2px; font: 600 15px var(--f-ui); }
+.acc-list { display: flex; flex-direction: column; gap: 6px; }
+.acc-row { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.5fr) auto; gap: 8px; align-items: center; padding: 8px; border: 1px solid var(--line); border-radius: 8px; }
+.acc-who { display: flex; flex-direction: column; min-width: 0; }
+.acc-stats { font-size: 13px; }
+.acc-act { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.acc-big { font-size: 26px; letter-spacing: .08em; font-weight: 600; text-align: center; margin: 4px 0; user-select: all; }
+.acc-pick { max-height: 30vh; overflow: auto; display: flex; flex-direction: column; gap: 4px; padding: 6px; border: 1px solid var(--line); border-radius: 8px; }
+@media (max-width: 899px) { .acc-row { grid-template-columns: minmax(0, 1fr); } .acc-act { justify-content: flex-start; } }

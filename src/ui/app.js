@@ -158,6 +158,7 @@ import { countLabel, pliesLabel } from './plural.js';
     if (kind !== 'fail') it.solved = true;
     lsSet('st.log', bumpLog(lsGet('st.log', {}), now));
     Store.save(S.book);
+    if (progressHook) { try { progressHook(S.book, it); } catch (e) {} }
   }
   function finishSolve() {
     S.solve.done = true; S.solve.busy = false;
@@ -1075,8 +1076,21 @@ import { countLabel, pliesLabel } from './plural.js';
     Live.init();
   }
 
+// Resolves when the library has been loaded from storage.
 export function start() {
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+  if (document.readyState === 'loading') {
+    return new Promise(function (res) { document.addEventListener('DOMContentLoaded', function () { res(init()); }); });
+  }
+  return init();
+}
+
+// Stage 4: hook for the cloud sync (called after a puzzle result is recorded locally).
+var progressHook = null;
+export function setProgressHook(fn) { progressHook = fn; }
+
+// What the account/sync UI needs from the app.
+export function appContext() {
+  return { S: S, Store: Store, toast: toast, openModal: openModal, renderAll: renderAll, esc: esc, lsGet: lsGet, lsSet: lsSet };
 }
 
 export { openModal };
