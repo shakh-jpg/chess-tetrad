@@ -21,11 +21,8 @@ function sampleBook() {
     '',
     'Задача 3. Мат конём (мат в углу)',
     '6rk/6pp/8/6N1/8/8/8/7K w - - 0 1',
-    'Решение: 1. Кf7#',
-    '',
-    'Задача 4. Мат в два хода',
-    '6k1/6pp/8/8/8/8/1Q4PP/R5K1 w - - 0 1',
-    'Решение: 1. Лa7 h6 (1... Крf8 2. Фb8#) 2. Фb8#'
+    'Решение: 1. Кf7#'
+    // "Задача 4. Мат в два хода" was removed (stage 3, coach's decision): its solution was not a mate.
   ].join('\n');
   var items = Core.parseBook(txt);
   return { id: uid('b'), name: 'Пример (можно удалить)', created: Date.now(), sample: true, items: items.map(function (it) { it.id = uid('i'); return it; }) };

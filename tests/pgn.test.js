@@ -84,12 +84,20 @@ describe('PGN and book text parsing', () => {
 
   it('parses the built-in sample book without errors', () => {
     const b = sampleBook();
-    expect(b.items.length).toBe(6);
+    expect(b.items.length).toBe(5);
     expect(b.items.filter((i) => i.err)).toEqual([]);
-    expect(b.items.map((i) => i.type)).toEqual(['game', 'game', 'puzzle', 'puzzle', 'puzzle', 'puzzle']);
+    expect(b.items.map((i) => i.type)).toEqual(['game', 'game', 'puzzle', 'puzzle', 'puzzle']);
     expect(b.items[0].plies).toBe(45);
-    // NOTE: sample "Задача 4" ends with 2. Qb8+ (not mate: Kh7). Content question for the coach, left as is.
-    expect(b.items[5].text).toBe('1. Ra7 h6 (1... Kf8 2. Qb8#) 2. Qb8+');
+    // The old "Задача 4. Мат в два хода" (solution ended with a check, not mate) was removed.
+    expect(b.items.some((i) => /Задача 4/.test(i.title))).toBe(false);
+  });
+
+  it('every sample puzzle titled "мат" really ends with mate in its main line', () => {
+    for (const it of sampleBook().items.filter((i) => i.type === 'puzzle' && /мат/i.test(i.title))) {
+      const ml = mainLine(parseMovetext(it.startFen, it.text).root);
+      expect(ml.length, it.title).toBeGreaterThan(0);
+      expect(ml[ml.length - 1].san, it.title).toMatch(/#$/);
+    }
   });
 });
 
