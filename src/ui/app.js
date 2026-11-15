@@ -105,7 +105,9 @@ import { movesHTML } from './moves-view.js';
       var reply = node.kids[0];
       if (!reply) return finishSolve();
       S.solve.busy = true; renderAll();
+      var sv = S.solve; // fix: ignore the delayed reply if another item / a new attempt was opened meanwhile
       setTimeout(function () {
+        if (S.solve !== sv) return;
         S.cur = reply; S.solve.node = reply; S.solve.busy = false;
         if (!reply.kids[0]) finishSolve(); else renderAll();
       }, 650);
@@ -147,8 +149,9 @@ import { movesHTML } from './moves-view.js';
     if (!S.solve.done) recordResult('fail');
     S.solve.done = true; S.hint = null; S.solve.msg = 'Решение показано.';
     var path = []; var n = S.solve.node; while (n.kids[0]) { n = n.kids[0]; path.push(n); }
-    var i = 0;
+    var i = 0, sv = S.solve; // fix: stop the animation if another item / a new attempt was opened
     (function step() {
+      if (S.solve !== sv) return;
       if (i >= path.length) { renderAll(); scheduleEngine(); return; }
       S.cur = path[i++]; S.solve.node = S.cur; renderAll(); setTimeout(step, 750);
     })();
