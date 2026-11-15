@@ -6,6 +6,15 @@ and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- "Новая партия": record a game over the board into the "Мои партии" book (created automatically).
+  Moves are written as the pieces are moved (analysis mode: going back and playing another move makes
+  a variation, "Удалить ход" removes the last move), the game is saved after every move, headers
+  (White, Black, Event, Date, Result) are edited in a small dialog and form the title, PGN export
+  uses them. Optionally starts from the current position. The engine is off while recording until
+  switched on. On phones "Назад / Удалить ход / Заголовки" sit in one row at the bottom of the board.
+- The recorded-game format (`headers`, `source: 'record' | 'live'`) is ready for live games (stage 5).
+
 ## [0.2.0] - 2026-11-15
 
 ### Security
