@@ -11,7 +11,7 @@ import { PIECE, boardSVG, sqFromEvent, svgPoint, ensurePieceSprite, pieceIcon } 
 import { newStat, applyResult, bumpLog } from '../srs/srs.js';
 import { createLive } from '../live/live.js';
 import { sampleBook } from './sample-book.js';
-import { $, $$, esc, lsGet, lsSet } from './util.js';
+import { $, $$, esc, uid, lsGet, lsSet } from './util.js';
 import { S, fmt } from './state.js';
 import { toast, openModal, copyText } from './dialogs.js';
 import { createProgressDialog } from './progress-dialog.js';
@@ -20,7 +20,9 @@ import { createImportDialog } from './import-dialog.js';
 import { createEditorDialog } from './editor-dialog.js';
 import { createRecordDialog } from './record-dialog.js';
 import { createScanDialog } from './scan-dialog.js';
-import { processScanPage, onScanResults } from '../scan/process.js';
+import { processScanPage, onScanResults, setScanResultsHandler } from '../scan/process.js';
+import { scanBookName, scanItemsFrom, mergeScanItems } from '../scan/to-items.js';
+import { ensureBook } from './record.js';
 import { resultLabel } from './record.js';
 import { pliesLabel } from './plural.js';
 import { booksHTML, itemsHTML, filterItems } from './library.js';
@@ -416,6 +418,17 @@ import { movesHTML } from './moves-view.js';
   };
   // scanned books (ui/scan-dialog.js); page processing is plugged in by scan/process.js
   var scanDialog = createScanDialog({ processPage: processScanPage, onResults: onScanResults });
+  // stage B: valid positions go straight into the "<file> (скан)" book (stage D adds a review screen)
+  setScanResultsHandler(function (state, file, modal) {
+    var name = scanBookName(file.name), now = Date.now();
+    var r = ensureBook(S.books, name, function () { return uid('b'); }, now);
+    var res = mergeScanItems(r.book, scanItemsFrom(state.results, name));
+    Store.put(JSON.parse(JSON.stringify(r.book)));
+    var invalid = state.results.filter(function (x) { return !x.valid; }).length;
+    if (modal) modal.close();
+    S.book = r.book; S.filter = 'all'; renderAll();
+    toast('В книгу «' + name + '» добавлено позиций: ' + res.added + (res.updated ? ', обновлено: ' + res.updated : '') + (invalid ? '. Не прошли проверку: ' + invalid : '') + '.');
+  });
   var openProgress = createProgressDialog(dialogCtx).openProgress;
   var dataDialog = createDataDialog(dialogCtx), openData = dataDialog.openData;
   var importDialog = createImportDialog(dialogCtx), openImport = importDialog.openImport, editItem = importDialog.editItem;

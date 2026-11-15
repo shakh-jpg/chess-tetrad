@@ -25,6 +25,10 @@
     "src/ui/library.js",
     "src/ui/backup.js",
     "src/ui/backup-reminder.js",
-    "src/ui/record.js"
+    "src/ui/record.js",
+    "src/scan/boards.js",
+    "src/scan/to-items.js",
+    "src/scan/scan-job.js",
+    "src/scan/djvu-split.js"
   ]
 }

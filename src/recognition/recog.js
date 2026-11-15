@@ -120,7 +120,8 @@ var Recog = (function () {
     BASE.forEach(function (m) { put(m.p, scoreSample(sq, m, rel) + 0.04); });
     (samples || []).forEach(function (m) { put(m.p || 'null', scoreSample(sq, m, rel) + 0.1); });
     var arr = Object.keys(best).map(function (k) { return { p: k, s: best[k] }; }).sort(function (p, q) { return q.s - p.s; });
-    return { p: arr[0].p === 'null' ? null : arr[0].p, conf: arr[0].s - arr[1].s };
+    // ranked: all candidates (best first) — used by the scanned-book recognizer to apply chess rules
+    return { p: arr[0].p === 'null' ? null : arr[0].p, conf: arr[0].s - arr[1].s, ranked: arr };
   }
 
   // src — canvas/img, rect = {x,y,w,h} в пикселях источника
@@ -155,7 +156,8 @@ var Recog = (function () {
     return out;
   }
 
-  return { recognize: recognize, buildTemplates: buildTemplates, _an: analyseSquare, _S: S, baseCount: BASE.length };
+  // _classify is used by the scanned-book recognizer (scan/recognize.js), which builds its own square analysis for hatched squares
+  return { recognize: recognize, buildTemplates: buildTemplates, _an: analyseSquare, _classify: classify, _S: S, baseCount: BASE.length };
 })();
 
 export { Recog };
