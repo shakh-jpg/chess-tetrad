@@ -1,9 +1,12 @@
 # Builds the app and publishes it to GitHub Pages (https://shakh-jpg.github.io/chess-tetrad/).
-# Runs on every push to main and can be started by hand. Only official actions/* are used.
+# Runs only after the "CI" workflow finished green for a push to main (or by hand).
+# Only official actions/* are used.
 name: Deploy to GitHub Pages
 
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
@@ -20,11 +23,15 @@ concurrency:
 
 jobs:
   build:
+    # deploy only a green CI run of a push to main (a manual run deploys the current main)
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+          # the exact commit that passed CI
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: actions/setup-node@v7
         with:
           node-version: 22
