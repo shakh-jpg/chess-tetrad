@@ -4,6 +4,7 @@
 // every field is type-checked, clipped and normalized before it reaches the library.
 import { Chess } from '../core/chess.js';
 import { Core } from '../core/index.js';
+import { normalizeHeaders } from './record.js';
 
 export var BACKUP_APP = 'shakhmatnaya-tetrad';
 
@@ -39,6 +40,11 @@ export function sanitizeItem(it) {
   if (typeof it.srcPage === 'number') out.srcPage = int(it.srcPage, 0, 100000);
   var st = sanitizeStat(it.stat); if (st) out.stat = st;
   if (it.solved === true) out.solved = true;
+  // recorded games (ui/record.js): PGN headers and origin
+  if (it.headers && typeof it.headers === 'object') { out.headers = normalizeHeaders(it.headers, Date.now()); out.result = out.headers.Result; }
+  if (it.recorded === true) out.recorded = true;
+  if (it.source === 'record' || it.source === 'live') out.source = it.source;
+  if (typeof it.created === 'number') out.created = int(it.created, 0, 1e15);
   return out;
 }
 
@@ -77,10 +83,14 @@ export function makeBackup(books, samples, now) {
 export function safeName(n) {
   return String(n || 'kniga').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60) || 'kniga';
 }
+// Recorded games carry real headers (White, Black, Event, Date, Result); other items keep the old tags.
 export function pgnOf(it, movetext) {
   var fen = it.startFen || Core.START, t = function (k, v) { return '[' + k + ' "' + String(v).replace(/[\\"]/g, ' ') + '"]'; };
-  var res = it.result && /^(1-0|0-1|1\/2-1\/2|\*)$/.test(it.result) ? it.result : '*';
-  var tags = [t('Event', it.title || '?'), t('Site', '?'), t('Date', '????.??.??'), t('Round', '?'), t('White', '?'), t('Black', '?'), t('Result', res)];
+  var h = it.headers || {};
+  var r0 = h.Result || it.result;
+  var res = r0 && /^(1-0|0-1|1\/2-1\/2|\*)$/.test(r0) ? r0 : '*';
+  var tags = [t('Event', h.Event || it.title || '?'), t('Site', '?'), t('Date', h.Date || '????.??.??'), t('Round', '?'),
+    t('White', h.White || '?'), t('Black', h.Black || '?'), t('Result', res)];
   if (fen.split(' ')[0] !== Core.START.split(' ')[0]) { tags.push(t('SetUp', '1')); tags.push(t('FEN', fen)); }
   var mt = movetext || '';
   var body = (mt ? mt + ' ' : '') + res;
