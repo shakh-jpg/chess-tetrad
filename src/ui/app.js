@@ -4,60 +4,25 @@ import { Chess as C } from '../core/chess.js';
 import { Core } from '../core/index.js';
 import { Engine, STOCKFISH_NAME } from '../engine/engine.js';
 import { scoreText, whiteShare } from '../engine/uci.js';
-import { Recog } from '../recognition/recog.js';
 import { Samples } from '../recognition/samples.js';
 import { Store } from '../storage/store.js';
-import { fenToMap, mapToFen, kingSq } from '../board/position.js';
+import { fenToMap, kingSq } from '../board/position.js';
 import { boardSVG, sqFromEvent, svgPoint, ensurePieceSprite, pieceIcon } from '../board/svg.js';
-import { openPdf, fileToText } from '../pdf-import/files.js';
-import { newStat, applyResult, bumpLog, streak as srsStreak, dayKey } from '../srs/srs.js';
+import { newStat, applyResult, bumpLog } from '../srs/srs.js';
 import { createLive } from '../live/live.js';
 import { sampleBook } from './sample-book.js';
-import { $, $$, esc, uid, lsGet, lsSet } from './util.js';
-import { countLabel, pliesLabel } from './plural.js';
-import { booksHTML, itemsHTML, filterItems, itemType } from './library.js';
-import { parseBackup, makeBackup, pgnOf, safeName } from './backup.js';
+import { $, $$, esc, lsGet, lsSet } from './util.js';
+import { S, fmt } from './state.js';
+import { toast, openModal, copyText } from './dialogs.js';
+import { createProgressDialog } from './progress-dialog.js';
+import { createDataDialog } from './data-dialog.js';
+import { createImportDialog } from './import-dialog.js';
+import { createEditorDialog } from './editor-dialog.js';
+import { pliesLabel } from './plural.js';
+import { booksHTML, itemsHTML, filterItems } from './library.js';
 import { movesHTML } from './moves-view.js';
 
   var activeEditor = null;
-
-  // ================= состояние =================
-  var S = {
-    books: [], book: null, item: null, root: null, cur: null, flipped: false,
-    notation: lsGet('st.notation', 'fig'), mode: 'analyse', solve: null,
-    sel: null, dots: [], drag: null, engineOn: false, engineLines: {}, engineKind: null,
-    filter: 'all', q: '', pane: 'board', hint: null, delArm: null, msg: null, nodes: {}
-  };
-
-  // ================= вспомогательное: позиции =================
-  var FIGS = { K: '♔', Q: '♕', R: '♖', B: '♗', N: '♘' };
-  var RUS = { K: 'Кр', Q: 'Ф', R: 'Л', B: 'С', N: 'К' };
-  function fmt(san) {
-    if (!san || S.notation === 'en') return san || '';
-    var M = S.notation === 'fig' ? FIGS : RUS;
-    return san.replace(/^[KQRBN]/, function (c) { return M[c]; }).replace(/=([QRBN])/, function (_, c) { return '=' + M[c]; });
-  }
-
-  // ================= уведомления и окна =================
-  var toastT;
-  function toast(msg, kind) {
-    var el = $('#toast'); el.textContent = msg; el.className = 'toast show ' + (kind || '');
-    clearTimeout(toastT); toastT = setTimeout(function () { el.className = 'toast'; }, 4200);
-  }
-  function openModal(html, cls) {
-    var back = document.createElement('div'); back.className = 'modal-back';
-    back.innerHTML = '<div class="modal ' + (cls || '') + '" role="dialog" aria-modal="true">' + html + '</div>';
-    $('#modal-root').appendChild(back);
-    var api = {
-      el: back.firstChild, back: back,
-      close: function () { if (back.parentNode) back.parentNode.removeChild(back); document.removeEventListener('keydown', onKey); if (api.onclose) api.onclose(); }
-    };
-    function onKey(e) { if (e.key === 'Escape') { e.stopPropagation(); api.close(); } }
-    document.addEventListener('keydown', onKey);
-    back.addEventListener('mousedown', function (e) { if (e.target === back && !cls) api.close(); });
-    $$('[data-close]', back).forEach(function (b) { b.addEventListener('click', api.close); });
-    return api;
-  }
 
   // ================= загрузка партии =================
   function curItemRef() { return S.item; }
@@ -429,105 +394,17 @@ import { movesHTML } from './moves-view.js';
     S.draw = (a.length || m.length) ? { node: S.cur, arrows: a, marks: m } : null;
   }
 
-  // ================= прогресс =================
-  function openProgress() {
-    var now = Date.now(), tot = 0, none = 0, clean = 0, help = 0, fail = 0, due = [], rows = [];
-    S.books.forEach(function (b) {
-      var secs = {}, order = [];
-      b.items.forEach(function (it) {
-        if (it.type !== 'puzzle') return;
-        tot++;
-        var st = it.stat, sec = it.section || 'Без раздела';
-        if (!secs[sec]) { secs[sec] = { n: 0, ok: 0 }; order.push(sec); }
-        secs[sec].n++;
-        if (!st) { if (it.solved) { help++; secs[sec].ok++; } else none++; return; }
-        if (st.res === 'fail') { fail++; due.push({ b: b.id, i: it.id, d: st.due }); }
-        else {
-          secs[sec].ok++; if (st.res === 'clean') clean++; else help++;
-          if (st.due <= now) due.push({ b: b.id, i: it.id, d: st.due });
-        }
-      });
-      if (order.length) rows.push('<div class="pg-book"><strong>' + esc(b.name) + '</strong>' + order.map(function (n) {
-        var x = secs[n], pc = Math.round(x.ok / x.n * 100);
-        return '<div class="pg-row"><span class="pg-name">' + esc(n) + '</span><span class="pg-bar"><i style="width:' + pc + '%"></i></span><span class="pg-n">' + x.ok + ' / ' + x.n + '</span></div>';
-      }).join('') + '</div>');
-    });
-    var log = lsGet('st.log', {}), streak = srsStreak(log, Date.now());
-    due.sort(function (a, b) { return a.d - b.d; });
-    var m = openModal('<h3>Прогресс</h3>' + (tot ? '<div class="pg-sum"><div><b>' + clean + '</b><span>решено сразу</span></div><div><b>' + help + '</b><span>с ошибками или подсказкой</span></div><div><b>' + fail + '</b><span>не решено</span></div><div><b>' + none + '</b><span>ещё не пробовали</span></div></div>' +
-      '<p class="hint-note">Занимались сегодня: ' + countLabel(log[dayKey(Date.now())] || 0, 'задача', 'задачи', 'задач') + '. Дней подряд: ' + streak + '. Прогресс хранится в этом браузере и попадает в копию библиотеки.</p>' +
-      '<div class="pg-list">' + rows.join('') + '</div>' : '<p class="empty-note">Пока нет задач. Загрузите книгу с задачами, и здесь появится ваш прогресс.</p>') +
-      '<div class="modal-act"><button class="btn" id="pg-reset">Сбросить прогресс</button><button class="btn" data-close>Закрыть</button><button class="btn primary" id="pg-rep"' + (due.length ? '' : ' disabled') + '>Повторить (' + due.length + ')</button></div>');
-    $('#pg-rep', m.el).addEventListener('click', function () {
-      S.repQ = due.map(function (x) { return { b: x.b, i: x.i }; }); m.close(); nextPuzzle();
-    });
-    $('#pg-reset', m.el).addEventListener('click', function () {
-      if (!confirm('Стереть результаты всех задач?')) return;
-      S.books.forEach(function (b) { b.items.forEach(function (it) { delete it.stat; delete it.solved; }); Store.save(b); });
-      lsSet('st.log', {}); m.close(); renderLibrary(); toast('Прогресс сброшен');
-    });
-  }
-
-  // ================= данные: резервная копия и PGN =================
+  // ================= диалоги (ui/*-dialog.js) =================
   var Dl = null;
-  function saveFile(name, text, mime) {
-    if (Dl) return Dl.save({ filename: name, data: text }).then(function () { toast('Файл готов'); }, function (e) { if (!e || e.code !== 'declined') toast('Не удалось сохранить файл: ' + ((e && e.message) || 'ошибка'), 'bad'); });
-    var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: mime || 'text/plain' })); a.download = name;
-    document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
-    return Promise.resolve();
-  }
-  // backup/PGN helpers: ui/backup.js (input from backup files is sanitized there)
-  function exportBackup() {
-    var obj = makeBackup(S.books, Samples.exportAll());
-    return saveFile('shakhmatnaya-tetrad-' + new Date().toISOString().slice(0, 10) + '.json', JSON.stringify(obj), 'application/json')
-      .then(function () { lsSet('st.backupAt', Date.now()); });
-  }
-  function importBackup(text) {
-    var r = parseBackup(text);
-    if (r.err) return r;
-    var add = 0, rep = 0;
-    r.books.forEach(function (b) {
-      var i = -1; S.books.forEach(function (x, k) { if (x.id === b.id) i = k; });
-      if (i >= 0) { S.books[i] = b; rep++; } else { S.books.push(b); add++; }
-      Store.put(JSON.parse(JSON.stringify(b)));
-    });
-    if (r.samples) Samples.merge(r.samples);
-    S.books.sort(function (a, b) { return (a.created || 0) - (b.created || 0); });
-    if (!S.book || !S.books.some(function (x) { return x === S.book; })) S.book = S.books[0] || null;
-    renderAll();
-    return { add: add, rep: rep, skipped: r.skipped };
-  }
-  function openData() {
-    var cnt = S.books.reduce(function (n, b) { return n + b.items.length; }, 0);
-    var m = openModal('<h3>Данные</h3><p class="hint-note">Библиотека хранится только в этом браузере. Если очистить данные сайта или сменить браузер, она пропадёт. Храните копию отдельно. Сейчас в библиотеке: книг ' + S.books.length + ', записей ' + cnt + '.' + (Store.persistent ? '' : ' Хранилище браузера недоступно, всё лежит только до закрытия страницы.') +
-      (/^(persisted|granted)$/.test(lsGet('st.persist', '')) ? ' Браузер разрешил хранить библиотеку постоянно.' : (Store.persistent ? ' Браузер может удалить данные, если на устройстве мало места.' : '')) + '</p>' +
-      '<div class="data-list">' +
-      '<button class="btn primary" id="dt-backup">Скачать копию библиотеки (JSON)</button>' +
-      '<label class="btn"><input id="dt-restore" type="file" accept=".json,application/json" hidden>Загрузить копию библиотеки</label>' +
-      '<button class="btn" id="dt-pgn-book"' + (S.book ? '' : ' disabled') + '>PGN: вся книга «' + esc(S.book ? S.book.name : '') + '»</button>' +
-      '<button class="btn" id="dt-pgn-cur"' + (S.item ? '' : ' disabled') + '>PGN: текущая запись</button></div>' +
-      '<p class="hint-note">PGN сохраняется как текстовый файл (.pgn.txt). Переименуйте его в .pgn, если программа требует. Ходы, варианты, комментарии и оценки сохраняются.</p>' +
-      '<div id="dt-status" class="status"></div><div class="modal-act"><button class="btn" data-close>Закрыть</button></div>');
-    var st = $('#dt-status', m.el);
-    $('#dt-backup', m.el).addEventListener('click', exportBackup);
-    $('#dt-restore', m.el).addEventListener('change', function (e) {
-      var f = e.target.files[0]; if (!f) return;
-      f.text().then(function (t) {
-        var r = importBackup(t);
-        st.className = 'status ' + (r.err ? 'bad' : 'good');
-        st.textContent = r.err || 'Загружено. Новых книг: ' + r.add + ', заменено: ' + r.rep + '.' + (r.skipped ? ' Пропущено записей с ошибками: ' + r.skipped + '.' : '');
-      });
-    });
-    $('#dt-pgn-book', m.el).addEventListener('click', function () {
-      if (!S.book) return;
-      var txt = S.book.items.map(function (it) { return pgnOf(it, it.text || ''); }).join('\n');
-      saveFile(safeName(S.book.name) + '.pgn.txt', txt, 'text/plain');
-    });
-    $('#dt-pgn-cur', m.el).addEventListener('click', function () {
-      if (!S.item) return;
-      saveFile(safeName(S.item.title) + '.pgn.txt', pgnOf(S.item, Core.toMovetext(S.root)), 'text/plain');
-    });
-  }
+  var dialogCtx = {
+    loadItem: loadItem, renderAll: renderAll, renderPane: renderPane, renderLibrary: renderLibrary, nextPuzzle: nextPuzzle,
+    getDl: function () { return Dl; }, live: function () { return Live; },
+    setActiveEditor: function (v) { activeEditor = v; }
+  };
+  var openProgress = createProgressDialog(dialogCtx).openProgress;
+  var dataDialog = createDataDialog(dialogCtx), openData = dataDialog.openData;
+  var importDialog = createImportDialog(dialogCtx), openImport = importDialog.openImport, editItem = importDialog.editItem;
+  var editorDialog = createEditorDialog(dialogCtx), openEditor = editorDialog.openEditor, openDiagram = editorDialog.openDiagram;
 
   // ================= взаимодействие с доской =================
   function bindBoard() {
@@ -656,10 +533,6 @@ import { movesHTML } from './moves-view.js';
     });
     bindBoard();
   }
-  function copyText(t, okMsg) {
-    var done = function () { toast(okMsg || 'Скопировано'); };
-    try { navigator.clipboard.writeText(t).then(done, function () { toast(t); }); } catch (e) { toast(t); }
-  }
   function nextPuzzle() {
     while (S.repQ && S.repQ.length) {
       var q = S.repQ.shift(), bk = S.books.filter(function (b) { return b.id === q.b; })[0], im = bk && bk.items.filter(function (x) { return x.id === q.i; })[0];
@@ -670,315 +543,6 @@ import { movesHTML } from './moves-view.js';
     for (j = 1; j <= list.length; j++) { var it = list[(i + j) % list.length]; if (it.type === 'puzzle' && it !== S.item && !it.solved) return loadItem(S.book, it); }
     for (j = 1; j <= list.length; j++) { var it2 = list[(i + j) % list.length]; if (it2.type === 'puzzle' && it2 !== S.item) return loadItem(S.book, it2); }
     toast('Других задач в этой книге нет');
-  }
-
-  // ================= правка текста записи =================
-  function editItem(book, item) {
-    var m = openModal('<h3>Править запись</h3>' +
-      '<label class="fld">Название<input id="ed-title" type="text" value="' + esc(item.title) + '"></label>' +
-      '<div class="row2"><label class="fld">Тип<select id="ed-type"><option value="game">Партия</option><option value="puzzle">Задача</option></select></label>' +
-      '<label class="fld">Начальная позиция (FEN)<input id="ed-fen" type="text" class="mono" value="' + esc(item.startFen) + '"></label></div>' +
-      '<label class="fld">Ходы в алгебраической записи. Можно писать по-русски (Кf3, Ф, Л, С, Кр) и по-английски; варианты в скобках, комментарии в фигурных.' +
-      (item.err && item.raw ? '<p class="status warn">Разбор остановился на «' + esc(item.err.token) + '». Ниже исходный текст из книги: исправьте ошибочный ход, и статус внизу покажет, прошёл ли разбор.</p>' : '') +
-      '<textarea id="ed-text" rows="9" spellcheck="false">' + esc(item.err && item.raw ? item.raw : item.text) + '</textarea></label>' +
-      '<div id="ed-status" class="status"></div>' +
-      '<div class="modal-act"><button class="btn" data-close>Отмена</button><button class="btn primary" id="ed-save">Сохранить</button></div>');
-    $('#ed-type', m.el).value = item.type;
-    var ta = $('#ed-text', m.el), fenIn = $('#ed-fen', m.el), st = $('#ed-status', m.el);
-    function check() {
-      var f = fenIn.value.trim() || Core.START, probe = new C();
-      if (!probe.load(f)) { st.className = 'status bad'; st.textContent = 'Позиция FEN записана неверно.'; return null; }
-      var r = Core.parseMovetext(f, ta.value);
-      if (r.err) { st.className = 'status bad'; st.textContent = 'Ход «' + r.err.token + '» нельзя сыграть после «' + r.err.before + '». Всё, что дальше, отброшено.'; }
-      else { st.className = 'status good'; st.textContent = 'Разобрано ходов основной линии: ' + Core.mainLine(r.root).length + (r.warn ? '. Пропущено вариантов с ошибками: ' + r.warn : '') + '.'; }
-      return { r: r, f: f };
-    }
-    ta.addEventListener('input', check); fenIn.addEventListener('input', check); check();
-    $('#ed-save', m.el).addEventListener('click', function () {
-      var c = check(); if (!c) return;
-      item.title = $('#ed-title', m.el).value.trim() || item.title;
-      item.type = $('#ed-type', m.el).value; item.startFen = c.f;
-      item.text = Core.toMovetext(c.r.root); item.plies = Core.mainLine(c.r.root).length;
-      item.err = c.r.err ? { token: c.r.err.token, ply: 0, before: c.r.err.before } : null; if (!c.r.err) item.raw = '';
-      Store.save(book); m.close();
-      if (S.item === item) loadItem(book, item, true); else renderLibrary();
-    });
-  }
-
-  // ================= импорт книги =================
-
-  function openImport() {
-    var m = openModal('<h3>Загрузить книгу</h3>' +
-      '<div id="imp-body">' +
-      '<label class="drop" id="drop"><input id="imp-file" type="file" multiple accept=".pdf,.epub,.docx,.fb2,.txt,.pgn,.html,.htm,.md" hidden>' +
-      '<strong>Перетащите файл сюда или нажмите для выбора</strong><span>PDF, EPUB, DOCX, FB2, TXT, PGN. Партии ищутся по записи ходов, задачи — по позиции в виде FEN.</span></label>' +
-      '<details class="paste"><summary>Или вставьте текст</summary><textarea id="imp-text" rows="7" placeholder="1. e4 e5 2. Кf3 Кc6 …" spellcheck="false"></textarea><button class="btn" id="imp-go-text">Разобрать текст</button></details>' +
-      '<p class="hint-note">Сканы без текстового слоя не читаются: распознавание текста с картинки здесь недоступно. Диаграммы из книг переводите кнопкой «Диаграмма».</p>' +
-      '</div>', 'wide');
-    var body = $('#imp-body', m.el), drop = $('#drop', m.el);
-    function run(files, pasted) {
-      body.innerHTML = '<div class="progress"><div class="pbar"><i id="pfill"></i></div><p id="ptxt">Читаю файл…</p></div>';
-      (async function () {
-        try {
-          var texts = [], name = 'Моя книга', info = { pages: 0, empty: 0 }, structured = [];
-          if (pasted !== undefined) { texts.push(pasted); name = 'Вставленный текст'; }
-          else {
-            name = files[0].name.replace(/\.[^.]+$/, '');
-            for (var i = 0; i < files.length; i++) {
-              var r = await fileToText(files[i], function (p, n) { $('#pfill', m.el).style.width = (p / n * 100) + '%'; $('#ptxt', m.el).textContent = 'Читаю страницы: ' + p + ' из ' + n; });
-              if (r.structured) { structured = structured.concat(r.structured.items); info.diagrams = (info.diagrams || 0) + r.structured.stats.diagrams; }
-              else texts.push(r.text);
-              if (r.pages) { info.pages += r.pages; info.empty += r.empty; }
-            }
-          }
-          $('#ptxt', m.el).textContent = 'Ищу партии и задачи…'; await new Promise(function (r) { setTimeout(r, 30); });
-          var items = structured.length ? structured.concat(texts.length ? Core.parseBook(texts.join('\n\n')) : []) : Core.parseBook(texts.join('\n\n'));
-          reviewImport(m, items, name, info);
-        } catch (e) {
-          body.innerHTML = '<p class="status bad">' + esc(e.message || String(e)) + '</p><div class="modal-act"><button class="btn" data-close>Закрыть</button></div>';
-          $('[data-close]', m.el).addEventListener('click', m.close);
-        }
-      })();
-    }
-    $('#imp-file', m.el).addEventListener('change', function (e) { if (e.target.files.length) run(e.target.files); });
-    $('#imp-go-text', m.el).addEventListener('click', function () { run(null, $('#imp-text', m.el).value); });
-    ['dragover', 'dragenter'].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add('over'); }); });
-    ['dragleave', 'drop'].forEach(function (ev) { drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove('over'); }); });
-    drop.addEventListener('drop', function (e) { if (e.dataTransfer.files.length) run(e.dataTransfer.files); });
-  }
-
-  function reviewImport(m, items, name, info) {
-    var body = $('#imp-body', m.el), games = items.filter(function (i) { return i.type === 'game'; }).length, puz = items.length - games, bad = items.filter(function (i) { return i.err; }).length;
-    if (!items.length) {
-      body.innerHTML = '<p class="status bad">Партии и задачи не найдены.</p>' +
-        '<ul class="help"><li>Для PDF проверьте, что текст выделяется мышью. У сканов текста нет' + (info.pages ? ' (страниц без текста: ' + info.empty + ' из ' + info.pages + ')' : '') + '.</li>' +
-        '<li>Фигурки в книге могут быть шрифтом, который превращается в непонятные знаки. Тогда скопируйте текст в другой редактор и замените знаки на буквы или вставьте текст вручную.</li>' +
-        '<li>Ходы должны идти с номерами: «1. e4 e5 2. Кf3». Позиции задач нужны в виде FEN или через кнопку «Диаграмма».</li></ul>' +
-        '<div class="modal-act"><button class="btn" data-close>Закрыть</button></div>';
-      $('[data-close]', m.el).addEventListener('click', m.close); return;
-    }
-    body.innerHTML = '<label class="fld">Название книги<input id="rv-name" type="text" value="' + esc(name) + '"></label>' +
-      '<p class="status good">Найдено: партий ' + games + ', задач ' + puz + (bad ? '. С ошибками разбора: ' + bad + ' (отмечены, их можно поправить)' : '') + '.' +
-      (info.diagrams ? ' Позиции прочитаны с диаграмм книги: ' + info.diagrams + '.' : '') +
-      (info.empty && !info.diagrams ? ' Страниц без текста: ' + info.empty + ' из ' + info.pages + '.' : '') + '</p>' +
-      '<div class="rv-list" id="rv-list">' + items.map(function (it, i) {
-        return '<div class="rv-row' + (it.err ? ' bad' : '') + '" data-i="' + i + '"><input type="checkbox" checked aria-label="Добавить"><span class="tag ' + itemType(it) + '">' + (itemType(it) === 'puzzle' ? 'З' : 'П') + '</span>' +
-          '<input class="rv-title" type="text" value="' + esc(it.title) + '"><span class="rv-meta">' + (Number(it.plies) || 0) + ' п/х' + (it.err ? ' · ошибка у «' + esc(it.err.token) + '»' : '') + '</span>' +
-          '<button class="icon-btn" data-rvedit="' + i + '" title="Править ходы">✎</button></div>';
-      }).join('') + '</div>' +
-      '<div class="modal-act"><button class="btn" data-close>Отмена</button><button class="btn primary" id="rv-add">Добавить в библиотеку</button></div>';
-    $('[data-close]', m.el).addEventListener('click', m.close);
-    $('#rv-list', m.el).addEventListener('click', function (e) {
-      var b = e.target.closest('[data-rvedit]'); if (!b) return;
-      var i = parseInt(b.getAttribute('data-rvedit'), 10), it = items[i];
-      var fake = { id: 'tmp', title: it.title, type: it.type, startFen: it.startFen, text: it.text, plies: it.plies };
-      editItem({ id: 'tmp', items: [], name: '' }, fake);
-      var tmpModal = $('#modal-root').lastChild;
-      var obs = new MutationObserver(function () {
-        if (!tmpModal.parentNode) {
-          obs.disconnect(); Object.assign(it, { title: fake.title, type: fake.type, startFen: fake.startFen, text: fake.text, plies: fake.plies, err: fake.err || null });
-          var row = $('[data-i="' + i + '"]', m.el);
-          if (row) { $('.rv-title', row).value = it.title; $('.rv-meta', row).textContent = it.plies + ' п/х'; row.classList.remove('bad'); }
-        }
-      });
-      obs.observe($('#modal-root'), { childList: true });
-    });
-    $('#rv-add', m.el).addEventListener('click', function () {
-      var rows = $$('.rv-row', m.el), chosen = [];
-      rows.forEach(function (r) {
-        if ($('input[type=checkbox]', r).checked) { var it = items[parseInt(r.getAttribute('data-i'), 10)]; it.title = $('.rv-title', r).value.trim() || it.title; chosen.push(it); }
-      });
-      if (!chosen.length) { toast('Ничего не выбрано'); return; }
-      var book = { id: uid('b'), name: $('#rv-name', m.el).value.trim() || name, created: Date.now(), items: chosen.map(function (it) { it.id = uid('i'); return it; }) };
-      S.books.push(book); Store.put(JSON.parse(JSON.stringify(book)));
-      S.book = book; m.close(); toast('Добавлено: ' + countLabel(chosen.length, 'запись', 'записи', 'записей')); renderAll();
-      if (window.innerWidth < 900) { S.pane = 'lib'; renderPane(); }
-    });
-  }
-
-  // ================= редактор позиции =================
-  function openEditor(init) {
-    init = init || {};
-    var E = { cells: init.fen ? fenToMap(init.fen) : fenToMap(Core.START), tool: 'wP', turn: init.fen ? init.fen.split(' ')[1] : 'w', flipped: false, low: init.low || {}, title: init.title || '' };
-    var castle = init.fen ? init.fen.split(' ')[2] : 'KQkq'; if (castle === '-') castle = '';
-    var pal = ['K', 'Q', 'R', 'B', 'N', 'P'];
-    var m = openModal('<h3>Расстановка позиции</h3><div class="ed-grid">' +
-      '<div><div id="ed-board" class="ed-board"></div><div class="palette" id="palette">' +
-      ['w', 'b'].map(function (c) { return '<div class="prow">' + pal.map(function (p) { return '<button class="pal ' + c + '" data-t="' + c + p + '" aria-label="' + c + p + '">' + pieceIcon(c + p) + '</button>'; }).join('') + '</div>'; }).join('') +
-      '<div class="prow"><button class="pal erase" data-t="x">Убрать</button><button class="pal erase" id="pe-clear-all" title="Убрать все фигуры с доски">Очистить доску</button></div></div></div>' +
-      '<div class="ed-side">' +
-      (init.low && Object.keys(init.low).length ? '<p class="status warn">Оранжевым отмечены клетки, в которых распознавание не уверено. Проверьте их.</p>' : '') +
-      '<label class="fld">Название<input id="pe-title" type="text" placeholder="Например: Задача 14, мат в 2 хода" value="' + esc(E.title) + '"></label>' +
-      '<div class="fld">Ход<div class="seg"><label><input type="radio" name="turn" value="w"> Белых</label><label><input type="radio" name="turn" value="b"> Чёрных</label></div></div>' +
-      '<div class="fld">Рокировка<div class="seg wrap">' + [['K', 'O-O белых'], ['Q', 'O-O-O белых'], ['k', 'O-O чёрных'], ['q', 'O-O-O чёрных']].map(function (c) { return '<label><input type="checkbox" data-c="' + c[0] + '"> ' + c[1] + '</label>'; }).join('') + '</div></div>' +
-      '<label class="fld">FEN<input id="pe-fen" type="text" class="mono" spellcheck="false"></label>' +
-      '<div class="seg wrap"><button class="btn" id="pe-clear">Очистить</button><button class="btn" id="pe-start">Начальная</button><button class="btn" id="pe-flip">Перевернуть</button></div>' +
-      (init.learn ? '<label class="chk"><input type="checkbox" id="pe-learn" checked> Запомнить фигуры как образцы набора «' + esc(init.learn.prof) + '»</label>' : '') +
-      '<div id="pe-status" class="status"></div></div></div>' +
-      '<div class="modal-act"><button class="btn" data-close>Отмена</button><button class="btn primary" id="pe-save">Сохранить и открыть</button></div>', 'wide');
-    var boardEl = $('#ed-board', m.el), fenIn = $('#pe-fen', m.el), st = $('#pe-status', m.el);
-    E.remote = !!init.live;
-    function curFen() {
-      var cs = $$('[data-c]', m.el).filter(function (c) { return c.checked; }).map(function (c) { return c.getAttribute('data-c'); }).join('');
-      var order = 'KQkq'; cs = order.split('').filter(function (c) { return cs.indexOf(c) >= 0; }).join('');
-      return mapToFen(E.cells, E.turn, cs || '-');
-    }
-    function validate(fen) {
-      var wk = 0, bk = 0, bad = false;
-      for (var k in E.cells) { if (E.cells[k] === 'wK') wk++; if (E.cells[k] === 'bK') bk++; if (E.cells[k][1] === 'P' && (k[1] === '1' || k[1] === '8')) bad = true; }
-      if (wk !== 1 || bk !== 1) return 'Нужно ровно по одному королю каждого цвета.';
-      if (bad) return 'Пешки не могут стоять на первой и восьмой горизонталях.';
-      var c = new C(); if (!c.load(fen)) return 'Позиция не проходит проверку.';
-      var other = new C(fen.replace(/ [wb] /, E.turn === 'w' ? ' b ' : ' w '));
-      if (other.in_check && other.in_check()) return 'Король стороны, которая не ходит, стоит под шахом.';
-      return '';
-    }
-    function sync(fromFen) {
-      if (!fromFen) fenIn.value = curFen();
-      boardEl.innerHTML = boardSVG(E.cells, { flipped: E.flipped, low: E.low });
-      var err = validate(fenIn.value);
-      st.className = 'status ' + (err ? 'bad' : 'good'); st.textContent = err || 'Позиция корректна.';
-      $('#pe-save', m.el).disabled = !!err || !Live.canSaveSetup();
-      if (!E.remote) Live.setup({ open: true, fen: fenIn.value });
-    }
-    function setCastle(cs) { $$('[data-c]', m.el).forEach(function (c) { c.checked = cs.indexOf(c.getAttribute('data-c')) >= 0; }); }
-    function autoCastle() {
-      var cs = ''; if (E.cells.e1 === 'wK') { if (E.cells.h1 === 'wR') cs += 'K'; if (E.cells.a1 === 'wR') cs += 'Q'; }
-      if (E.cells.e8 === 'bK') { if (E.cells.h8 === 'bR') cs += 'k'; if (E.cells.a8 === 'bR') cs += 'q'; }
-      setCastle(cs);
-    }
-    setCastle(castle); $$('input[name=turn]', m.el).forEach(function (r) { r.checked = r.value === E.turn; });
-    if (!init.fen) { setCastle('KQkq'); }
-    function setTool(t) { E.tool = t; $$('.pal', m.el).forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-t') === t); }); }
-    setTool('wP');
-    $('#palette', m.el).addEventListener('click', function (e) { var b = e.target.closest('.pal'); if (b && b.id !== 'pe-clear-all') setTool(b.getAttribute('data-t')); });
-    boardEl.addEventListener('pointerdown', function (e) {
-      if (Live.blocked()) { toast('Сейчас ходит только учитель.'); return; }
-      var svg = $('svg', boardEl), sq = sqFromEvent(svg, e, E.flipped); if (!sq) return;
-      if (E.tool === 'x' || E.cells[sq] === E.tool) delete E.cells[sq]; else E.cells[sq] = E.tool;
-      delete E.low[sq]; autoCastle(); sync();
-    });
-    $$('input[name=turn]', m.el).forEach(function (r) { r.addEventListener('change', function () { E.turn = r.value; sync(); }); });
-    $$('[data-c]', m.el).forEach(function (c) { c.addEventListener('change', function () { sync(); }); });
-    fenIn.addEventListener('input', function () {
-      var f = fenIn.value.trim(), p = new C();
-      if (p.load(f)) { E.cells = fenToMap(f); E.turn = f.split(' ')[1]; setCastle(f.split(' ')[2] === '-' ? '' : f.split(' ')[2]); $$('input[name=turn]', m.el).forEach(function (r) { r.checked = r.value === E.turn; }); sync(true); }
-      else { st.className = 'status bad'; st.textContent = 'FEN записан неверно.'; $('#pe-save', m.el).disabled = true; }
-    });
-    function clearAll() { E.cells = {}; E.low = {}; setCastle(''); sync(); }
-    $('#pe-clear', m.el).addEventListener('click', clearAll);
-    $('#pe-clear-all', m.el).addEventListener('click', clearAll);
-    $('#pe-start', m.el).addEventListener('click', function () { E.cells = fenToMap(Core.START); E.low = {}; E.turn = 'w'; $$('input[name=turn]', m.el)[0].checked = true; setCastle('KQkq'); sync(); });
-    $('#pe-flip', m.el).addEventListener('click', function () { E.flipped = !E.flipped; sync(true); });
-    $('#pe-save', m.el).addEventListener('click', function () {
-      var fen = curFen(), title = $('#pe-title', m.el).value.trim() || 'Позиция ' + new Date().toLocaleDateString('ru-RU');
-      var lc = $('#pe-learn', m.el);
-      if (init.learn && lc && lc.checked) { var na = Samples.learn(init.learn.prof, null, E.cells, init.learn.res); toast(na ? 'Запомнено образцов: ' + na : 'Все фигуры уже распознавались уверенно.'); }
-      var book = S.books.filter(function (b) { return b.name === 'Мои позиции'; })[0];
-      if (!book) { book = { id: uid('b'), name: 'Мои позиции', created: Date.now(), items: [] }; S.books.push(book); }
-      var item = { id: uid('i'), type: 'puzzle', title: title, startFen: fen, text: '', plies: 0, result: '' };
-      book.items.push(item); Store.put(JSON.parse(JSON.stringify(book)));
-      m.close(); S.filter = 'all'; loadItem(book, item);
-    });
-    m.onclose = function () { activeEditor = null; if (!E.closing) Live.setup({ open: false }); };
-    activeEditor = {
-      fen: function () { return fenIn.value; },
-      close: function () { E.closing = true; m.close(); },
-      setFen: function (f) {
-        var pl = f.split(' ');
-        E.remote = true; E.cells = fenToMap(f); E.turn = pl[1] === 'b' ? 'b' : 'w'; E.low = {};
-        setCastle(pl[2] && pl[2] !== '-' ? pl[2] : '');
-        $$('input[name=turn]', m.el).forEach(function (r) { r.checked = r.value === E.turn; });
-        fenIn.value = f; sync(true); E.remote = false;
-      }
-    };
-    if (!Live.canSaveSetup()) { var sv = $('#pe-save', m.el); sv.hidden = true; }
-    if (init.live) { E.remote = true; sync(); E.remote = false; } else sync();
-    return m;
-  }
-
-  // ================= диаграмма из книги → позиция =================
-  function openDiagram() {
-    var m = openModal('<h3>Диаграмма из книги</h3>' +
-      '<p class="hint-note">Загрузите картинку или PDF, затем обведите на странице только доску 8×8 без рамки и подписей. Распознавание приблизительное, результат всегда можно поправить.</p>' +
-      '<div class="dg-bar"><label class="btn"><input id="dg-file" type="file" accept="image/*,.pdf" hidden>Выбрать файл</label>' +
-      '<span class="dg-pg" id="dg-pg" hidden><button class="btn" id="dg-prev">‹</button> <span id="dg-pgn"></span> <button class="btn" id="dg-next">›</button></span>' +
-      '<label class="chk"><input type="checkbox" id="dg-flip"> Диаграмма повёрнута (чёрные внизу)</label></div>' +
-      '<div class="dg-bar"><label class="fld grow">Набор образцов (книга)<input id="dg-prof" list="dg-profs" type="text" placeholder="Например: Завлечение" autocomplete="off"></label>' +
-      '<datalist id="dg-profs">' + Samples.names().map(function (n) { return '<option value="' + esc(n) + '">'; }).join('') + '</datalist>' +
-      '<span class="hint-note" id="dg-prof-info"></span><button class="btn" id="dg-prof-reset" hidden>Сбросить образцы</button></div>' +
-      '<div class="dg-stage" id="dg-stage"><p class="empty-note">Файл не выбран. Можно вставить картинку из буфера обмена (Ctrl+V).</p></div>' +
-      '<div id="dg-status" class="status"></div>' +
-      '<div class="modal-act"><button class="btn" data-close>Отмена</button><button class="btn primary" id="dg-go" disabled>Распознать</button></div>', 'wide');
-    var D = { src: null, rect: null, pdf: null, page: 1, sc: 1 };
-    var profIn = $('#dg-prof', m.el), profInfo = $('#dg-prof-info', m.el), profReset = $('#dg-prof-reset', m.el);
-    profIn.value = Samples.last || (Samples.names()[0] || '');
-    function profUpd() {
-      var n = profIn.value.trim(), c = n ? Samples.count(n) : 0;
-      profInfo.textContent = n ? (c ? 'Образцов в наборе: ' + c + '. После исправления позиции набор пополнится.' : 'Новый набор. Исправьте позицию в редакторе, и приложение запомнит фигуры этой книги.') : 'Без названия образцы не запоминаются.';
-      profReset.hidden = !c;
-    }
-    profIn.addEventListener('input', profUpd); profUpd();
-    profReset.addEventListener('click', function () { var n = profIn.value.trim(); if (n && confirm('Удалить все образцы набора «' + n + '»?')) { Samples.reset(n); profUpd(); } });
-    var stage = $('#dg-stage', m.el), status = $('#dg-status', m.el);
-    function show(canvasOrImg, w, h) {
-      D.src = canvasOrImg; D.rect = null; $('#dg-go', m.el).disabled = true;
-      stage.innerHTML = '<div class="dg-wrap" id="dg-wrap"><canvas id="dg-cv"></canvas><div class="dg-sel" id="dg-sel" hidden></div></div>';
-      var cv = $('#dg-cv', m.el); cv.width = w; cv.height = h; cv.getContext('2d').drawImage(canvasOrImg, 0, 0, w, h);
-      D.w = w; D.h = h; D.cv = cv;
-      var wrap = $('#dg-wrap', m.el), sel = $('#dg-sel', m.el), start = null;
-      wrap.addEventListener('pointerdown', function (e) { var r = cv.getBoundingClientRect(); start = { x: e.clientX - r.left, y: e.clientY - r.top }; wrap.setPointerCapture(e.pointerId); sel.hidden = false; upd(e); });
-      wrap.addEventListener('pointermove', function (e) { if (start) upd(e); });
-      wrap.addEventListener('pointerup', function (e) { if (!start) return; upd(e); start = null; finish(); });
-      function upd(e) {
-        var r = cv.getBoundingClientRect(), x = Math.max(0, Math.min(r.width, e.clientX - r.left)), y = Math.max(0, Math.min(r.height, e.clientY - r.top));
-        var dx = x - start.x, dy = y - start.y, side = Math.max(Math.abs(dx), Math.abs(dy));
-        var x0 = dx < 0 ? start.x - side : start.x, y0 = dy < 0 ? start.y - side : start.y;
-        x0 = Math.max(0, x0); y0 = Math.max(0, y0);
-        sel.style.left = x0 + 'px'; sel.style.top = y0 + 'px'; sel.style.width = side + 'px'; sel.style.height = side + 'px';
-        D.rect = { x: x0 / r.width * D.w, y: y0 / r.height * D.h, w: side / r.width * D.w, h: side / r.height * D.h };
-      }
-      function finish() { var ok = D.rect && D.rect.w > 40; $('#dg-go', m.el).disabled = !ok; status.className = 'status'; status.textContent = ok ? 'Область выбрана. Сетка 8×8 должна совпадать с клетками. Если нет, обведите заново.' : 'Область слишком мала.'; }
-    }
-    async function renderPdf() {
-      var page = await D.pdf.getPage(D.page), vp = page.getViewport({ scale: 2 });
-      var cv = document.createElement('canvas'); cv.width = vp.width; cv.height = vp.height;
-      await page.render({ canvas: cv, canvasContext: cv.getContext('2d'), viewport: vp }).promise;
-      show(cv, cv.width, cv.height); $('#dg-pgn', m.el).textContent = D.page + ' / ' + D.pdf.numPages;
-    }
-    async function loadFile(f) {
-      status.className = 'status'; status.textContent = 'Загружаю…';
-      try {
-        if (/\.pdf$/i.test(f.name) || f.type === 'application/pdf') {
-          D.pdf = await openPdf(await f.arrayBuffer()); D.page = 1;
-          $('#dg-pg', m.el).hidden = false; await renderPdf();
-        } else {
-          $('#dg-pg', m.el).hidden = true;
-          var url = URL.createObjectURL(f), img = new Image();
-          await new Promise(function (res, rej) { img.onload = res; img.onerror = rej; img.src = url; });
-          var sc = Math.min(1, 1600 / Math.max(img.width, img.height));
-          show(img, Math.round(img.width * sc), Math.round(img.height * sc));
-        }
-        status.textContent = 'Обведите доску мышью или пальцем.';
-      } catch (e) { status.className = 'status bad'; status.textContent = e.message || 'Не удалось открыть файл.'; }
-    }
-    $('#dg-file', m.el).addEventListener('change', function (e) { if (e.target.files[0]) loadFile(e.target.files[0]); });
-    var onPaste = function (e) { var items = (e.clipboardData && e.clipboardData.files) || []; if (items.length && /^image\//.test(items[0].type)) loadFile(items[0]); };
-    document.addEventListener('paste', onPaste); m.onclose = function () { document.removeEventListener('paste', onPaste); };
-    $('#dg-prev', m.el).addEventListener('click', function () { if (D.pdf && D.page > 1) { D.page--; renderPdf(); } });
-    $('#dg-next', m.el).addEventListener('click', function () { if (D.pdf && D.page < D.pdf.numPages) { D.page++; renderPdf(); } });
-    $('#dg-go', m.el).addEventListener('click', async function () {
-      status.className = 'status'; status.textContent = 'Распознаю…';
-      try {
-        if (document.fonts && document.fonts.load) { try { await document.fonts.load('48px "Noto Sans Symbols 2"', '♚'); } catch (e) {} }
-        var flip = $('#dg-flip', m.el).checked, prof = profIn.value.trim(), res = Recog.recognize(D.cv, D.rect, flip, prof ? Samples.list(prof) : null), cells = {}, low = {};
-        res.forEach(function (r) { if (r.p) { cells[r.sq] = r.p; if (r.conf < 0.1) low[r.sq] = 1; } });
-        var cs = ''; if (cells.e1 === 'wK') { if (cells.h1 === 'wR') cs += 'K'; if (cells.a1 === 'wR') cs += 'Q'; } if (cells.e8 === 'bK') { if (cells.h8 === 'bR') cs += 'k'; if (cells.a8 === 'bR') cs += 'q'; }
-        var fen = mapToFen(cells, 'w', cs || '-');
-        m.close();
-        openEditor({ fen: fen, low: low, title: '', learn: prof ? { prof: prof, res: res } : null });
-      } catch (e) { status.className = 'status bad'; status.textContent = 'Не удалось распознать: ' + (e.message || e); }
-    });
   }
 
   // ================= совместная работа (урок): live/live.js =================
