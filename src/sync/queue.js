@@ -1,3 +1,4 @@
+// @ts-check
 // Offline-first sync queue for progress rows. One pending row per item (newest by the merge rule);
 // persisted (localStorage by default) so nothing is lost when the app is closed offline.
 // The "newer" rule is the same as mergeStat() in model.js and push_progress() in SQL.

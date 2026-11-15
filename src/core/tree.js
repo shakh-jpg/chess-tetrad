@@ -1,3 +1,4 @@
+// @ts-check
 // Move tree: nodes, variations, movetext output.
 // Moved verbatim from the prototype (shakhmatnaya-tetrad_artifact_2026-11-13.html); see git history.
 import { Chess as C } from './chess.js';
@@ -25,8 +26,9 @@ import { Chess as C } from './chess.js';
     var m = null;
     var pm = typeof moveOrSan === 'string' ? /^([a-h])([a-h])=([QRBN])$/.exec(moveOrSan) : null;
     if (pm) {
+      const pmc = pm; // const keeps the non-null type inside the callback (@ts-check)
       var pc = g.moves({ verbose: true }).filter(function (x) {
-        return x.piece === 'p' && x.flags.indexOf('c') >= 0 && x.from[0] === pm[1] && x.to[0] === pm[2] && (x.promotion || '').toUpperCase() === pm[3];
+        return x.piece === 'p' && x.flags.indexOf('c') >= 0 && x.from[0] === pmc[1] && x.to[0] === pmc[2] && (x.promotion || '').toUpperCase() === pmc[3];
       });
       if (pc.length === 1) m = g.move(pc[0]);
     } else if (typeof moveOrSan === 'string' && /^[a-h][a-h]$/.test(moveOrSan)) {
@@ -39,15 +41,16 @@ import { Chess as C } from './chess.js';
       if (!m) {
         var mm = /^([KQRBN])?([a-h])?([1-8])?x?-?([a-h][1-8])(?:=?([QRBN]))?[+#]?$/.exec(moveOrSan);
         if (mm) {
-          var pc = (mm[1] || 'P').toLowerCase();
+          const mmc = mm;
+          var pieceType = (mmc[1] || 'P').toLowerCase();
           var c2 = g.moves({ verbose: true }).filter(function (x) {
-            if (x.piece !== pc || x.to !== mm[4]) return false;
-            if (mm[2] && x.from[0] !== mm[2]) return false;
-            if (mm[3] && x.from[1] !== mm[3]) return false;
-            if (mm[5] && (x.promotion || '').toUpperCase() !== mm[5]) return false;
+            if (x.piece !== pieceType || x.to !== mmc[4]) return false;
+            if (mmc[2] && x.from[0] !== mmc[2]) return false;
+            if (mmc[3] && x.from[1] !== mmc[3]) return false;
+            if (mmc[5] && (x.promotion || '').toUpperCase() !== mmc[5]) return false;
             return true;
           });
-          if (c2.length > 1 && !mm[5]) c2 = c2.filter(function (x) { return !x.promotion || x.promotion === 'q'; });
+          if (c2.length > 1 && !mmc[5]) c2 = c2.filter(function (x) { return !x.promotion || x.promotion === 'q'; });
           if (c2.length === 1) m = g.move(c2[0]);
         }
       }

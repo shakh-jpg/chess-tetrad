@@ -1,3 +1,4 @@
+// @ts-check
 // Library backup (JSON) and PGN export. Pure functions.
 // A backup file is untrusted input (it can be edited or come from someone else):
 // every field is type-checked, clipped and normalized before it reaches the library.
@@ -25,6 +26,7 @@ export function sanitizeItem(it) {
   if (!it || typeof it.id !== 'string' || !it.id || it.id.length > 100 || typeof it.title !== 'string') return null;
   var fen = it.startFen === undefined ? Core.START : it.startFen;
   if (!validFen(fen)) return null;
+  /** @type {Record<string, any>} */
   var out = {
     id: it.id, type: it.type === 'puzzle' ? 'puzzle' : 'game', title: str(it.title, 300), startFen: fen,
     text: str(it.text, 100000), plies: int(it.plies, 0, 10000),

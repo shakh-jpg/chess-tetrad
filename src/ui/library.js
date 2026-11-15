@@ -1,3 +1,4 @@
+// @ts-check
 // Library panel markup (books and items). Pure functions: data in, HTML string out.
 // Every value that can come from a book, PGN, backup file or the cloud is escaped or normalized:
 // ids and names via esc(), the item type is reduced to 'puzzle' | 'game', counts to numbers.

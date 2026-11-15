@@ -1,3 +1,4 @@
+// @ts-check
 // Student invite codes: XXXX-XXXX-XXXX from an alphabet without look-alikes (no 0 O 1 I L).
 export var CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 
@@ -9,7 +10,7 @@ export function normalizeCode(input) {
   var s = String(input || '').toUpperCase().replace(/[АВЕКМНРСТХУЗ]/g, function (c) { return CYR[c]; });
   s = s.replace(/[^A-Z0-9]/g, '');
   var valid = s.length === 12 && s.split('').every(function (c) { return CODE_ALPHABET.indexOf(c) >= 0; });
-  var code = s.length ? s.match(/.{1,4}/g).join('-') : '';
+  var code = (s.match(/.{1,4}/g) || []).join('-');
   return { code: code, valid: valid };
 }
 

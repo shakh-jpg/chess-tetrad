@@ -1,3 +1,4 @@
+// @ts-check
 // Mapping between the local library (books/items with SRS stats) and the cloud tables,
 // plus the progress merge rule. Pure functions — no network, no DOM.
 import { Core } from '../core/index.js';
@@ -7,6 +8,12 @@ export var REMOTE_PREFIX = 'set-';
 
 // ---------- merge rule (same as push_progress in SQL) ----------
 // More attempts wins; on a tie the later attempt wins; otherwise keep `a`.
+/**
+ * @template {{n?: number, last?: number}} T
+ * @param {T|null|undefined} a local
+ * @param {T|null|undefined} b remote
+ * @returns {T|null}
+ */
 export function mergeStat(a, b) {
   if (!a) return b || null;
   if (!b) return a;

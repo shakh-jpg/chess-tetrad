@@ -1,14 +1,32 @@
+// @ts-check
 // Spaced repetition for puzzles: simple Leitner boxes (0, 1, 3, 7, 16, 35 days).
 // Extracted from the prototype's UI as pure functions so they can be tested.
 
+/**
+ * Spaced-repetition statistics of one puzzle (stored in item.stat and in the cloud).
+ * @typedef {Object} Stat
+ * @property {number} n      attempts
+ * @property {number} ok     successful attempts
+ * @property {number} clean  solved without mistakes or hints
+ * @property {number} fail   solution shown
+ * @property {number} box    Leitner box 0..5
+ * @property {number} last   time of the last attempt (ms)
+ * @property {number} due    next review time (ms)
+ * @property {''|'clean'|'help'|'fail'} res  last counted result
+ */
+/** @typedef {'clean'|'help'|'fail'} ResultKind */
+
+/** @type {number[]} */
 export var BOX_DAYS = [0, 1, 3, 7, 16, 35];
 export var DAY = 864e5;
 
+/** @param {number|Date} [t] @returns {string} */
 export function dayKey(t) {
   var d = new Date(t || Date.now());
   return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
 }
 
+/** @returns {Stat} */
 export function newStat() {
   return { n: 0, ok: 0, clean: 0, fail: 0, box: 0, last: 0, due: 0, res: '' };
 }
@@ -16,12 +34,14 @@ export function newStat() {
 // True if a successful attempt comes before the puzzle is due again
 // (e.g. pressing "Ещё раз" right after solving). Such repeats must not
 // move the puzzle to a longer interval.
+/** @param {Stat} st @param {ResultKind} kind @param {number} now */
 export function isEarlyRepeat(st, kind, now) {
   return kind !== 'fail' && st.n > 0 && st.res !== 'fail' && now < st.due;
 }
 
 // kind: 'clean' (no mistakes, no hints) | 'help' (mistakes or hints) | 'fail' (solution shown).
 // Mutates and returns st.
+/** @param {Stat} st @param {ResultKind} kind @param {number} [now] @returns {Stat} */
 export function applyResult(st, kind, now) {
   if (now === undefined) now = Date.now();
   if (isEarlyRepeat(st, kind, now)) {
@@ -40,13 +60,16 @@ export function applyResult(st, kind, now) {
 }
 
 // Daily activity log { 'YYYY-MM-DD': count }, keeps the last 400 days. Mutates and returns log.
+/** @param {Record<string, number>} log @param {number} [now] */
 export function bumpLog(log, now) {
   var k = dayKey(now); log[k] = (log[k] || 0) + 1;
-  var keys = Object.keys(log).sort(); while (keys.length > 400) delete log[keys.shift()];
+  var keys = Object.keys(log).sort();
+  while (keys.length > 400) { var oldest = keys.shift(); if (oldest !== undefined) delete log[oldest]; }
   return log;
 }
 
 // Days in a row with activity, counting today or (if nothing yet today) from yesterday.
+/** @param {Record<string, number>} log @param {number} [now] @returns {number} */
 export function streak(log, now) {
   var n = 0, d = new Date(now || Date.now());
   if (!log[dayKey(d)]) d = new Date(d.getTime() - DAY);
@@ -54,6 +77,7 @@ export function streak(log, now) {
   return n;
 }
 
+/** @param {Stat} st @param {number} [now] */
 export function isDue(st, now) {
   return st.res !== 'fail' && st.due <= (now === undefined ? Date.now() : now);
 }

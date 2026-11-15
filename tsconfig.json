@@ -1,0 +1,28 @@
+{
+  // Type checking of plain JS through JSDoc. Only files that start with `// @ts-check` are checked
+  // (checkJs: false); the rest of the code base is used for inference only. Nothing is emitted.
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "allowJs": true,
+    "checkJs": false,
+    "noEmit": true,
+    "strict": true,
+    "noImplicitAny": false,
+    "skipLibCheck": true,
+    "types": []
+  },
+  "include": [
+    "src/srs/srs.js",
+    "src/engine/uci.js",
+    "src/core/tree.js",
+    "src/sync/model.js",
+    "src/sync/queue.js",
+    "src/sync/code.js",
+    "src/ui/plural.js",
+    "src/ui/library.js",
+    "src/ui/backup.js"
+  ]
+}

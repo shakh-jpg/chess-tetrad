@@ -14,7 +14,9 @@
     "preview": "vite preview --host 127.0.0.1 --port 4173 --strictPort",
     "test": "vitest run",
     "test:watch": "vitest",
-    "icons": "node scripts/make-icons.mjs"
+    "icons": "node scripts/make-icons.mjs",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "5.3.0",
@@ -28,9 +30,13 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.16",
+    "@eslint/js": "10.0.1",
     "@resvg/resvg-js": "2.6.2",
+    "eslint": "10.15.0",
     "fake-indexeddb": "6.2.8",
+    "globals": "17.14.0",
     "happy-dom": "21.0.4",
+    "typescript": "5.9.3",
     "vite": "^8.3.8",
     "vitest": "^5.1.0"
   }
