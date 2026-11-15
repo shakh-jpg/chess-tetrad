@@ -603,7 +603,8 @@ export function setProgressHook(fn) { progressHook = fn; }
 
 // What the account/sync UI needs from the app.
 export function appContext() {
-  return { S: S, Store: Store, toast: toast, openModal: openModal, renderAll: renderAll, esc: esc, lsGet: lsGet, lsSet: lsSet };
+  return { S: S, Store: Store, toast: toast, openModal: openModal, renderAll: renderAll, esc: esc, lsGet: lsGet, lsSet: lsSet,
+    exportBackup: function () { return dataDialog.exportBackup(); } };
 }
 
 export { openModal };
