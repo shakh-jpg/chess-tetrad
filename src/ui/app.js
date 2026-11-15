@@ -9,7 +9,7 @@ import { Samples } from '../recognition/samples.js';
 import { Store } from '../storage/store.js';
 import { FILES, fenToMap, mapToFen, kingSq } from '../board/position.js';
 import { boardSVG, sqFromEvent, svgPoint, ensurePieceSprite, pieceIcon } from '../board/svg.js';
-import { loadPdfjs, fileToText } from '../pdf-import/files.js';
+import { openPdf, fileToText } from '../pdf-import/files.js';
 import { newStat, applyResult, bumpLog, streak as srsStreak, statLabel, dayKey } from '../srs/srs.js';
 import { createLive } from '../live/live.js';
 import { sampleBook } from './sample-book.js';
@@ -992,16 +992,14 @@ import { countLabel, pliesLabel } from './plural.js';
     async function renderPdf() {
       var page = await D.pdf.getPage(D.page), vp = page.getViewport({ scale: 2 });
       var cv = document.createElement('canvas'); cv.width = vp.width; cv.height = vp.height;
-      await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+      await page.render({ canvas: cv, canvasContext: cv.getContext('2d'), viewport: vp }).promise;
       show(cv, cv.width, cv.height); $('#dg-pgn', m.el).textContent = D.page + ' / ' + D.pdf.numPages;
     }
     async function loadFile(f) {
       status.className = 'status'; status.textContent = 'Загружаю…';
       try {
         if (/\.pdf$/i.test(f.name) || f.type === 'application/pdf') {
-          var pdfjsLib = await loadPdfjs();
-          if (!pdfjsLib) throw new Error('Не загрузилась библиотека чтения PDF.');
-          D.pdf = await pdfjsLib.getDocument({ data: await f.arrayBuffer() }).promise; D.page = 1;
+          D.pdf = await openPdf(await f.arrayBuffer()); D.page = 1;
           $('#dg-pg', m.el).hidden = false; await renderPdf();
         } else {
           $('#dg-pg', m.el).hidden = true;

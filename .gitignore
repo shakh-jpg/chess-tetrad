@@ -14,5 +14,6 @@ Thumbs.db
 
 # Generated from node_modules by scripts/copy-engine.mjs
 public/engine/
+public/pdfjs/
 *.docx
 *.fb2

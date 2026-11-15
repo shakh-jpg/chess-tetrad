@@ -9,6 +9,8 @@ import crypto from 'node:crypto';
 export function selectPrecache(files) {
   return files.filter(function (f) {
     if (f === 'sw.js' || f.endsWith('.map') || f.endsWith('.txt')) return false;
+    // pdf.js image decoders are needed only for scanned PDFs (coach's tool): cached on first use.
+    if (f.indexOf('pdfjs/wasm/') === 0) return false;
     if (/\.woff$/.test(f)) return false;
     if (/\.woff2$/.test(f)) return /-(latin|cyrillic)-\d00-(normal|italic)|symbols-2-symbols-/.test(f);
     return true;

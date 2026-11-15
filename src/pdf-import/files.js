@@ -2,12 +2,16 @@
 // Moved verbatim from the prototype (shakhmatnaya-tetrad_artifact_2026-11-13.html); see git history.
 import { BookPdf } from './bookpdf.js';
 
-// Stage 1: pdf.js and JSZip come from npm (same versions as the prototype's CDN
-// copies) and are loaded lazily, so the main bundle stays small.
+// pdf.js and JSZip come from npm and are loaded lazily, so the main bundle stays small.
+// pdf.js is >= 4.2.67 (fix for CVE-2024-4367 / GHSA-wgrm-67xf-hhpq: a malicious PDF could run
+// arbitrary JavaScript). The "legacy" build is used for older phones and browsers.
 var pdfjsP = null;
 function loadPdfjs() {
   if (!pdfjsP) {
-    pdfjsP = Promise.all([import('pdfjs-dist'), import('pdfjs-dist/build/pdf.worker.min.js?url')]).then(function (m) {
+    pdfjsP = Promise.all([
+      import('pdfjs-dist/legacy/build/pdf.min.mjs'),
+      import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url')
+    ]).then(function (m) {
       var lib = m[0].getDocument ? m[0] : m[0].default;
       if (!lib.GlobalWorkerOptions.workerSrc) lib.GlobalWorkerOptions.workerSrc = m[1].default;
       return lib;
@@ -20,11 +24,24 @@ async function loadJSZip() {
   return m.default || m;
 }
 
-async function pdfToText(file, onProg) {
+// The only place where a PDF is opened. Options:
+//  - isEvalSupported: false — never compile code from PDF data (defence in depth; pdf.js 6
+//    no longer has that code path at all, older versions did);
+//  - wasmUrl — image decoders (JBIG2, JPEG 2000 for scanned books) shipped with the app.
+function pdfOptions(data, baseURI) {
+  var base = baseURI || (typeof document !== 'undefined' ? document.baseURI : 'http://localhost/');
+  return { data: data, isEvalSupported: false, wasmUrl: new URL('pdfjs/wasm/', base).href };
+}
+// Returns the loaded document, or throws with a readable message if the library is missing.
+async function openPdf(data) {
   var pdfjsLib = await loadPdfjs();
   if (!pdfjsLib) throw new Error('Не загрузилась библиотека чтения PDF. Проверьте интернет и обновите страницу.');
+  return pdfjsLib.getDocument(pdfOptions(data)).promise;
+}
+
+async function pdfToText(file, onProg) {
   var buf = await file.arrayBuffer();
-  var doc = await pdfjsLib.getDocument({ data: buf }).promise, out = [], empty = 0, pageItems = [];
+  var doc = await openPdf(buf), out = [], empty = 0, pageItems = [];
   for (var p = 1; p <= doc.numPages; p++) {
     var page = await doc.getPage(p), tc = await page.getTextContent(), s = '', lastY = null, lastEnd = null;
     pageItems.push(tc.items.filter(function (it) { return it.str !== undefined; }).map(function (it) { return { s: it.str, x: it.transform[4], y: it.transform[5], h: it.height, w: it.width }; }));
@@ -99,4 +116,4 @@ async function fileToText(file, onProg) {
   throw new Error('Неизвестный формат файла.');
 }
 
-export { loadPdfjs, pdfToText, htmlToText, epubToText, docxToText, fb2ToText, fileToText };
+export { loadPdfjs, openPdf, pdfOptions, pdfToText, htmlToText, epubToText, docxToText, fb2ToText, fileToText };
