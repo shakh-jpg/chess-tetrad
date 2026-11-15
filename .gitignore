@@ -17,3 +17,7 @@ public/engine/
 public/pdfjs/
 *.docx
 *.fb2
+
+# Playwright output
+test-results/
+playwright-report/
