@@ -288,3 +288,13 @@ svg.bd.shake { animation: shake .3s; }
 .acc-big { font-size: 26px; letter-spacing: .08em; font-weight: 600; text-align: center; margin: 4px 0; user-select: all; }
 .acc-pick { max-height: 30vh; overflow: auto; display: flex; flex-direction: column; gap: 4px; padding: 6px; border: 1px solid var(--line); border-radius: 8px; }
 @media (max-width: 899px) { .acc-row { grid-template-columns: minmax(0, 1fr); } .acc-act { justify-content: flex-start; } }
+
+/* ---- Recording a game ---- */
+.rec-bar { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.rec-bar .btn { min-height: 44px; flex: 1 1 0; max-width: 170px; }
+@media (max-width: 899px) {
+  /* always at hand at the bottom of the board pane, for one-handed recording */
+  .rec-bar { flex-wrap: nowrap; position: sticky; bottom: calc(6px + env(safe-area-inset-bottom, 0px)); z-index: 6; padding: 6px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 6px 18px rgba(8, 13, 18, .25); }
+}
+@media (max-width: 899px) { .rec-bar .btn { max-width: none; min-width: 0; padding: 7px 6px; } }

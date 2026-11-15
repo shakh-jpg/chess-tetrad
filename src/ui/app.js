@@ -18,6 +18,8 @@ import { createProgressDialog } from './progress-dialog.js';
 import { createDataDialog } from './data-dialog.js';
 import { createImportDialog } from './import-dialog.js';
 import { createEditorDialog } from './editor-dialog.js';
+import { createRecordDialog } from './record-dialog.js';
+import { resultLabel } from './record.js';
 import { pliesLabel } from './plural.js';
 import { booksHTML, itemsHTML, filterItems } from './library.js';
 import { movesHTML } from './moves-view.js';
@@ -35,6 +37,8 @@ import { movesHTML } from './moves-view.js';
     if (r.err && !silent) toast('Ход «' + r.err.token + '» нельзя сыграть после «' + r.err.before + '». Откройте «Править текст», чтобы исправить.', 'warn');
     lsSet('st.last', { b: book.id, i: item.id });
     if (item.type === 'puzzle' && S.root.kids.length && !Live.isOn()) startSolve(); else { S.mode = 'analyse'; S.solve = null; }
+    // a game being recorded (maybe at the board, during play): engine and its arrows are off until switched on
+    if (item.recorded) S.engineOn = false;
     if (window.innerWidth < 900) S.pane = 'board';
     renderAll(); scheduleEngine();
     Live.itemLoaded();
@@ -43,7 +47,8 @@ import { movesHTML } from './moves-view.js';
     if (S.item) {
       S.item.text = Core.toMovetext(S.root);
       S.item.plies = Core.mainLine(S.root).length;
-      if (S.item.id !== 'live' && S.book) Store.save(S.book);
+      // recorded games are written at once (closing the tab right after a move must not lose it)
+      if (S.item.id !== 'live' && S.book) { if (S.item.recorded) Store.put(JSON.parse(JSON.stringify(S.book))); else Store.save(S.book); }
     }
     Live.treeChanged();
   }
@@ -235,7 +240,7 @@ import { movesHTML } from './moves-view.js';
     $('#itemtitle').textContent = it ? it.title : 'Выберите партию или задачу';
     var sub = '';
     if (it) {
-      sub = (it.type === 'puzzle' ? 'Задача' : 'Партия') + (it.note ? ' · ' + it.note : '') + (it.plies ? ' · ' + pliesLabel(it.plies) : '') + (it.result ? ' · ' + it.result : '') + (it.section ? ' · ' + it.section : (S.book ? ' · ' + S.book.name : ''));
+      sub = (it.type === 'puzzle' ? 'Задача' : 'Партия') + (it.note ? ' · ' + it.note : '') + (it.plies ? ' · ' + pliesLabel(it.plies) : '') + (it.result && it.result !== '*' ? ' · ' + resultLabel(it.result) : '') + (it.section ? ' · ' + it.section : (S.book ? ' · ' + S.book.name : ''));
     } else sub = 'Загрузите книгу или откройте пример слева';
     $('#itemsub').textContent = sub;
 
@@ -258,6 +263,7 @@ import { movesHTML } from './moves-view.js';
     ['first', 'prev', 'next', 'last'].forEach(function (a) { var el = $('[data-nav="' + a + '"]'); if (el) el.disabled = lock || lb; });
     var eb = $('#engine-toggle'); if (eb) { eb.disabled = false; eb.classList.toggle('dim', lock || Live.engineBlocked()); eb.title = Live.engineBlocked() ? 'Учитель отключил движок на время урока' : (lock ? 'Движок недоступен, пока вы решаете задачу' : ''); eb.setAttribute('aria-pressed', S.engineOn ? 'true' : 'false'); eb.classList.toggle('on', S.engineOn); eb.textContent = S.engineOn ? 'Выключить' : 'Включить'; }
     var tools = $('#movetools'); if (tools) tools.hidden = lock;
+    var rec = $('#recbar'); if (rec) rec.hidden = !(S.item && S.item.recorded);
   }
 
   // ================= отрисовка: библиотека =================
@@ -409,6 +415,10 @@ import { movesHTML } from './moves-view.js';
   var dataDialog = createDataDialog(dialogCtx), openData = dataDialog.openData;
   var importDialog = createImportDialog(dialogCtx), openImport = importDialog.openImport, editItem = importDialog.editItem;
   var editorDialog = createEditorDialog(dialogCtx), openEditor = editorDialog.openEditor, openDiagram = editorDialog.openDiagram;
+  var recordDialog = createRecordDialog({
+    loadItem: loadItem, persist: persist, renderAll: renderAll,
+    engineOff: function () { if (S.engineOn) { S.engineOn = false; stopEngineRun(); } }
+  });
 
   // ================= взаимодействие с доской =================
   function bindBoard() {
@@ -518,6 +528,8 @@ import { movesHTML } from './moves-view.js';
         else if (act === 'delmove') deleteFromHere(); else if (act === 'promote') promoteVariation();
         else if (act === 'copyfen') copyText(S.cur.fen, 'FEN скопирован');
         else if (act === 'cleardraw') clearDraw();
+        else if (act === 'newgame') recordDialog.openNewGame();
+        else if (act === 'headers') recordDialog.openHeaders();
         return;
       }
       if (e.target.closest('#engine-toggle')) { toggleEngine(); return; }
@@ -526,6 +538,7 @@ import { movesHTML } from './moves-view.js';
     $('#notation').addEventListener('change', function (e) { S.notation = e.target.value; lsSet('st.notation', S.notation); renderAll(); });
     $$('.tab').forEach(function (t) { t.addEventListener('click', function () { S.pane = t.getAttribute('data-pane'); renderPane(); }); });
     $('#btn-import').addEventListener('click', openImport);
+    $('#btn-newgame').addEventListener('click', function () { recordDialog.openNewGame(); });
     $('#btn-diagram').addEventListener('click', function () { openDiagram(); });
     $('#btn-setup').addEventListener('click', function () { openEditor(); });
     $('#btn-data').addEventListener('click', openData);

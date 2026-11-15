@@ -24,6 +24,7 @@
     <div class="top-actions" id="top-actions">
       <button class="btn" id="btn-install" hidden>Установить</button>
       <button class="btn primary" id="btn-import">Загрузить книгу</button>
+      <button class="btn" id="btn-newgame">Новая партия</button>
       <button class="btn" id="btn-diagram">Диаграмма</button>
       <button class="btn" id="btn-setup">Расставить позицию</button>
       <button class="btn" id="btn-live" hidden>Урок</button>
@@ -43,7 +44,7 @@
 
   <main class="layout" id="layout" data-pane="board">
     <aside class="pane lib" id="pane-lib">
-      <div class="lib-head"><h2>Библиотека</h2></div>
+      <div class="lib-head"><h2>Библиотека</h2><button class="btn primary" data-act="newgame">Новая партия</button></div>
       <div class="books" id="books"></div>
       <div class="filters">
         <button class="chip on" data-f="all">Все</button>
@@ -75,6 +76,11 @@
           <option value="ru">Буквы Кf3</option>
           <option value="en">English Nf3</option>
         </select>
+      </div>
+      <div class="rec-bar" id="recbar" hidden>
+        <button class="btn" data-nav="prev" aria-label="Ход назад">◀ Назад</button>
+        <button class="btn" data-act="delmove" title="Удалить текущий ход и всё после него">Удалить ход</button>
+        <button class="btn" data-act="headers">Заголовки</button>
       </div>
     </section>
 
