@@ -26,6 +26,7 @@
     "@fontsource/literata": "5.3.0",
     "@fontsource/noto-sans-symbols-2": "5.3.0",
     "@supabase/supabase-js": "2.119.0",
+    "djvu-rs": "0.45.0",
     "jszip": "3.10.1",
     "pdfjs-dist": "6.5.438",
     "stockfish": "19.0.1"

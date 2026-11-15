@@ -11,6 +11,8 @@ export function selectPrecache(files) {
     if (f === 'sw.js' || f.endsWith('.map') || f.endsWith('.txt')) return false;
     // pdf.js image decoders are needed only for scanned PDFs (coach's tool): cached on first use.
     if (f.indexOf('pdfjs/wasm/') === 0) return false;
+    // DjVu decoder (scanned books, coach's tool): cached on first use as well.
+    if (/^assets\/djvu_rs_bg-[^/]*\.wasm$/.test(f)) return false;
     if (/\.woff$/.test(f)) return false;
     if (/\.woff2$/.test(f)) return /-(latin|cyrillic)-\d00-(normal|italic)|symbols-2-symbols-/.test(f);
     return true;

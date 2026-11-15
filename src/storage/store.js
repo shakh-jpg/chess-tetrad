@@ -44,6 +44,17 @@ export function createStore(deps) {
       } catch (e) { fail('read', e); res([]); }
     });
   }
+  // One record by id (e.g. a saved scan job), or null.
+  function get(id) {
+    if (useMem || !db) return Promise.resolve(mem[id] || null);
+    return new Promise(function (res) {
+      try {
+        var rq = db.transaction('books').objectStore('books').get(id);
+        rq.onsuccess = function () { res(rq.result || null); };
+        rq.onerror = function (e) { fail('read', e); res(null); };
+      } catch (e) { fail('read', e); res(null); }
+    });
+  }
   function write(op, fn) {
     if (useMem || !db) return Promise.resolve(true);
     return new Promise(function (res) {
@@ -77,7 +88,7 @@ export function createStore(deps) {
     }).catch(function () { return 'unsupported'; });
   }
   return {
-    open: open, all: all, put: put, del: del, save: save, requestPersistence: requestPersistence,
+    open: open, all: all, get: get, put: put, del: del, save: save, requestPersistence: requestPersistence,
     setErrorHandler: function (fn) { onError = fn; },
     get persistent() { return !useMem && !!db; }
   };

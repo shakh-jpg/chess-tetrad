@@ -19,6 +19,8 @@ import { createDataDialog } from './data-dialog.js';
 import { createImportDialog } from './import-dialog.js';
 import { createEditorDialog } from './editor-dialog.js';
 import { createRecordDialog } from './record-dialog.js';
+import { createScanDialog } from './scan-dialog.js';
+import { processScanPage, onScanResults } from '../scan/process.js';
 import { resultLabel } from './record.js';
 import { pliesLabel } from './plural.js';
 import { booksHTML, itemsHTML, filterItems } from './library.js';
@@ -409,8 +411,11 @@ import { movesHTML } from './moves-view.js';
   var dialogCtx = {
     loadItem: loadItem, renderAll: renderAll, renderPane: renderPane, renderLibrary: renderLibrary, nextPuzzle: nextPuzzle,
     getDl: function () { return Dl; }, live: function () { return Live; },
-    setActiveEditor: function (v) { activeEditor = v; }
+    setActiveEditor: function (v) { activeEditor = v; },
+    openScan: function (file) { return scanDialog.open(file); }
   };
+  // scanned books (ui/scan-dialog.js); page processing is plugged in by scan/process.js
+  var scanDialog = createScanDialog({ processPage: processScanPage, onResults: onScanResults });
   var openProgress = createProgressDialog(dialogCtx).openProgress;
   var dataDialog = createDataDialog(dialogCtx), openData = dataDialog.openData;
   var importDialog = createImportDialog(dialogCtx), openImport = importDialog.openImport, editItem = importDialog.editItem;
@@ -593,7 +598,7 @@ import { movesHTML } from './moves-view.js';
     if (!lsGet('st.persist', null)) Store.requestPersistence().then(function (r) { lsSet('st.persist', r); });
     var allRecs = await Store.all();
     Samples.load(allRecs.filter(function (b) { return b.id === '__recog'; })[0]);
-    S.books = allRecs.filter(function (b) { return b.id !== '__recog'; }).sort(function (a, b) { return a.created - b.created; });
+    S.books = allRecs.filter(function (b) { return String(b.id).indexOf('__') !== 0; }) /* '__recog', '__scan:…' are service records */.sort(function (a, b) { return a.created - b.created; });
     if (!S.books.length) { var sb = sampleBook(); S.books.push(sb); Store.put(JSON.parse(JSON.stringify(sb))); }
     var last = lsGet('st.last', null), book = null, item = null;
     if (last) { book = S.books.filter(function (b) { return b.id === last.b; })[0]; if (book) item = book.items.filter(function (i) { return i.id === last.i; })[0]; }

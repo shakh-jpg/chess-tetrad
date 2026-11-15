@@ -51,10 +51,10 @@ export function createImportDialog(ctx) {
   function openImport() {
     var m = openModal('<h3>Загрузить книгу</h3>' +
       '<div id="imp-body">' +
-      '<label class="drop" id="drop"><input id="imp-file" type="file" multiple accept=".pdf,.epub,.docx,.fb2,.txt,.pgn,.html,.htm,.md" hidden>' +
+      '<label class="drop" id="drop"><input id="imp-file" type="file" multiple accept=".pdf,.djvu,.djv,.epub,.docx,.fb2,.txt,.pgn,.html,.htm,.md" hidden>' +
       '<strong>Перетащите файл сюда или нажмите для выбора</strong><span>PDF, EPUB, DOCX, FB2, TXT, PGN. Партии ищутся по записи ходов, задачи — по позиции в виде FEN.</span></label>' +
       '<details class="paste"><summary>Или вставьте текст</summary><textarea id="imp-text" rows="7" placeholder="1. e4 e5 2. Кf3 Кc6 …" spellcheck="false"></textarea><button class="btn" id="imp-go-text">Разобрать текст</button></details>' +
-      '<p class="hint-note">Сканы без текстового слоя не читаются: распознавание текста с картинки здесь недоступно. Диаграммы из книг переводите кнопкой «Диаграмма».</p>' +
+      '<p class="hint-note">Сканы (PDF без текстового слоя и DjVu) можно распознать: после выбора файла появится кнопка «Распознать скан». Отдельную диаграмму можно перевести кнопкой «Диаграмма».</p>' +
       '<p class="hint-note rights-note">Загружайте только книги, которыми вы вправе пользоваться. Файл читается только на этом устройстве и никуда не отправляется.</p>' +
       '</div>', 'wide');
     var body = $('#imp-body', m.el), drop = $('#drop', m.el);
@@ -68,6 +68,8 @@ export function createImportDialog(ctx) {
             name = files[0].name.replace(/\.[^.]+$/, '');
             for (var i = 0; i < files.length; i++) {
               var r = await fileToText(files[i], function (p, n) { $('#pfill', m.el).style.width = (p / n * 100) + '%'; $('#ptxt', m.el).textContent = 'Читаю страницы: ' + p + ' из ' + n; });
+              // a scan (DjVu, or a PDF whose pages have no text layer) can be recognized instead
+              if (r.scan || (r.pages && r.empty >= r.pages * 0.8)) info.scanFile = files[i];
               if (r.structured) { structured = structured.concat(r.structured.items); info.diagrams = (info.diagrams || 0) + r.structured.stats.diagrams; }
               else texts.push(r.text);
               if (r.pages) { info.pages += r.pages; info.empty += r.empty; }
@@ -91,6 +93,15 @@ export function createImportDialog(ctx) {
 
   function reviewImport(m, items, name, info) {
     var body = $('#imp-body', m.el), games = items.filter(function (i) { return i.type === 'game'; }).length, puz = items.length - games, bad = items.filter(function (i) { return i.err; }).length;
+    if (!items.length && info.scanFile && ctx.openScan) {
+      var sf = info.scanFile;
+      body.innerHTML = '<p class="status warn">Это скан: в «' + esc(sf.name) + '» нет текстового слоя' + (info.pages ? ' (страниц без текста: ' + info.empty + ' из ' + info.pages + ')' : '') + '.</p>' +
+        '<p class="hint-note">Приложение может само найти на страницах диаграммы и распознать позиции. Это делается на этом устройстве, файл никуда не отправляется.</p>' +
+        '<div class="modal-act"><button class="btn" data-close>Закрыть</button><button class="btn primary" id="imp-scan">Распознать скан</button></div>';
+      $('[data-close]', m.el).addEventListener('click', m.close);
+      $('#imp-scan', m.el).addEventListener('click', function () { m.close(); ctx.openScan(sf); });
+      return;
+    }
     if (!items.length) {
       body.innerHTML = '<p class="status bad">Партии и задачи не найдены.</p>' +
         '<ul class="help"><li>Для PDF проверьте, что текст выделяется мышью. У сканов текста нет' + (info.pages ? ' (страниц без текста: ' + info.empty + ' из ' + info.pages + ')' : '') + '.</li>' +

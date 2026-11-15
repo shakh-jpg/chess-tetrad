@@ -112,7 +112,9 @@ async function fileToText(file, onProg) {
   if (/\.(html?|xhtml)$/.test(n)) return { text: htmlToText(await file.text()) };
   if (/\.(txt|pgn|md|text)$/.test(n) || file.type.indexOf('text') === 0) return { text: await file.text() };
   if (/\.(png|jpe?g|webp|gif|bmp)$/.test(n)) throw new Error('Картинки загружаются через кнопку «Диаграмма».');
-  if (/\.(djvu?|mobi|azw3?|doc)$/.test(n)) throw new Error('Формат ' + n.slice(n.lastIndexOf('.')) + ' не читается. Сохраните книгу как PDF, EPUB или DOCX.');
+  // DjVu books are scans: they go to "Распознать скан" (ui/scan-dialog.js)
+  if (/\.(djvu|djv)$/.test(n)) return { text: '', scan: true, pages: 0, empty: 0 };
+  if (/\.(mobi|azw3?|doc)$/.test(n)) throw new Error('Формат ' + n.slice(n.lastIndexOf('.')) + ' не читается. Сохраните книгу как PDF, EPUB или DOCX.');
   throw new Error('Неизвестный формат файла.');
 }
 
