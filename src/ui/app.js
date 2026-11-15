@@ -7,7 +7,7 @@ import { scoreText, whiteShare } from '../engine/uci.js';
 import { Samples } from '../recognition/samples.js';
 import { Store } from '../storage/store.js';
 import { fenToMap, kingSq } from '../board/position.js';
-import { boardSVG, sqFromEvent, svgPoint, ensurePieceSprite, pieceIcon } from '../board/svg.js';
+import { PIECE, boardSVG, sqFromEvent, svgPoint, ensurePieceSprite, pieceIcon } from '../board/svg.js';
 import { newStat, applyResult, bumpLog } from '../srs/srs.js';
 import { createLive } from '../live/live.js';
 import { sampleBook } from './sample-book.js';
@@ -448,10 +448,10 @@ import { movesHTML } from './moves-view.js';
         if (!ghost) {
           ghost = document.createElementNS('http://www.w3.org/2000/svg', 'use');
           ghost.setAttribute('class', 'pc ghost ' + d.piece[0]); ghost.setAttribute('href', '#pc-' + d.piece);
-          ghost.setAttribute('width', '100'); ghost.setAttribute('height', '100');
+          ghost.setAttribute('width', String(PIECE)); ghost.setAttribute('height', String(PIECE));
           svg.appendChild(ghost);
         }
-        var p = svgPoint(svg, e); ghost.setAttribute('x', p.x - 50); ghost.setAttribute('y', p.y - 50);
+        var p = svgPoint(svg, e); ghost.setAttribute('x', p.x - PIECE / 2); ghost.setAttribute('y', p.y - PIECE / 2);
       }
     });
     function endDrag(e) {

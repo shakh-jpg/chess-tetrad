@@ -115,7 +115,7 @@ svg.bd.shake { animation: shake .3s; }
 .sl { fill: var(--sq-l); } .sd { fill: var(--sq-d); }
 .hl-last { fill: var(--hl-last); } .hl-sel { fill: var(--hl-sel); } .hl-check { fill: var(--hl-check); } .hl-hint { fill: var(--hl-hint); }
 .hl-low { fill: none; stroke: #E58A10; stroke-width: 6; }
-.co { font: 600 20px var(--f-ui); pointer-events: none; }
+.co { font: 600 16px var(--f-ui); pointer-events: none; }
 .co.cl { fill: var(--co-d); } .co.cd { fill: var(--co-l); }
 .dot { fill: rgba(20, 33, 45, .32); pointer-events: none; }
 .dot-cap { fill: none; stroke: rgba(20, 33, 45, .32); stroke-width: 9; pointer-events: none; }

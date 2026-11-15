@@ -8,6 +8,7 @@ import { PIECES } from './pieces.js';
 // is added to the document; boards reference it with <use href="#pc-wK">.
 var SPRITE_ID = 'piece-sprite';
 var SQUARE_RE = /^[a-h][1-8]$/, PIECE_RE = /^[wb][KQRBNP]$/;
+var PIECE = 88; // piece size inside a 100-unit square
 function pieceSpriteMarkup() {
   return '<svg id="' + SPRITE_ID + '" xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true"><defs>' +
     Object.keys(PIECES).map(function (k) { return '<symbol id="pc-' + k + '" viewBox="0 0 45 45">' + PIECES[k] + '</symbol>'; }).join('') +
@@ -38,8 +39,9 @@ function boardSVG(pieces, o) {
     if (o.check === sq) s += '<rect x="' + x + '" y="' + y + '" width="100" height="100" class="hl-check"/>';
     if (o.hint === sq) s += '<rect x="' + x + '" y="' + y + '" width="100" height="100" class="hl-hint"/>';
     if (o.low && o.low[sq]) s += '<rect x="' + (x + 4) + '" y="' + (y + 4) + '" width="92" height="92" class="hl-low"/>';
-    if (fi === 0) s += '<text x="' + (x + 6) + '" y="' + (y + 22) + '" class="co ' + (dark ? 'cl' : 'cd') + '">' + rank + '</text>';
-    if (ri === 7) s += '<text x="' + (x + 94) + '" y="' + (y + 92) + '" text-anchor="end" class="co ' + (dark ? 'cl' : 'cd') + '">' + FILES[file] + '</text>';
+    // coordinates sit in the very corners, pieces are 88% of the square: they no longer overlap on phones
+    if (fi === 0) s += '<text x="' + (x + 4) + '" y="' + (y + 17) + '" class="co ' + (dark ? 'cl' : 'cd') + '">' + rank + '</text>';
+    if (ri === 7) s += '<text x="' + (x + 96) + '" y="' + (y + 96) + '" text-anchor="end" class="co ' + (dark ? 'cl' : 'cd') + '">' + FILES[file] + '</text>';
   }
   (o.dots || []).forEach(function (d) {
     var f2 = FILES.indexOf(d.sq[0]), r2 = parseInt(d.sq[1], 10);
@@ -54,7 +56,7 @@ function boardSVG(pieces, o) {
     if (!SQUARE_RE.test(k) || !PIECE_RE.test(p)) continue;
     var pf = FILES.indexOf(k[0]), pr = parseInt(k[1], 10);
     var px = (fl ? 7 - pf : pf) * 100 + 50, py = (fl ? pr - 1 : 8 - pr) * 100 + 50;
-    s += '<use href="#pc-' + p + '" x="' + (px - 50) + '" y="' + (py - 50) + '" width="100" height="100" class="pc ' + p[0] + '" data-sq="' + k + '"/>';
+    s += '<use href="#pc-' + p + '" x="' + (px - PIECE / 2) + '" y="' + (py - PIECE / 2) + '" width="' + PIECE + '" height="' + PIECE + '" class="pc ' + p[0] + '" data-sq="' + k + '"/>';
   }
   (o.marks || []).forEach(function (q) {
     var mf = FILES.indexOf(q[0]), mr = parseInt(q[1], 10);
@@ -81,4 +83,4 @@ function svgPoint(svg, e) {
   return { x: (e.clientX - r.left) / r.width * 800, y: (e.clientY - r.top) / r.height * 800 };
 }
 
-export { boardSVG, sqFromEvent, svgPoint, ensurePieceSprite, pieceIcon, pieceSpriteMarkup };
+export { PIECE, boardSVG, sqFromEvent, svgPoint, ensurePieceSprite, pieceIcon, pieceSpriteMarkup };

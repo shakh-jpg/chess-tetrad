@@ -52,10 +52,10 @@ describe('SVG pieces', () => {
   });
   it('the board references sprite symbols instead of font glyphs', () => {
     const s = boardSVG({ e1: 'wK', e8: 'bK' }, {});
-    expect(s).toContain('<use href="#pc-wK" x="400" y="700"');
-    expect(s).toContain('<use href="#pc-bK" x="400" y="0"');
+    expect(s).toContain('<use href="#pc-wK" x="406" y="706"');
+    expect(s).toContain('<use href="#pc-bK" x="406" y="6"');
     expect(s).not.toMatch(/♚|♔/);
-    expect(boardSVG({ e1: 'wK' }, { flipped: true })).toContain('<use href="#pc-wK" x="300" y="0"');
+    expect(boardSVG({ e1: 'wK' }, { flipped: true })).toContain('<use href="#pc-wK" x="306" y="6"');
     expect(pieceIcon('wQ')).toContain('#pc-wQ');
   });
 });
