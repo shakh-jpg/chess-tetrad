@@ -35,3 +35,23 @@ test('phone: menu', async ({ browser }) => {
   await page.screenshot({ path: OUT + 'phone-menu.png' });
   await ctx.close();
 });
+
+test('phone: recording a game (controls at hand)', async ({ browser }) => {
+  const ctx = await browser.newContext({ viewport: { width: 375, height: 812 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, colorScheme: 'dark' });
+  const page = await ctx.newPage();
+  await openApp(page);
+  await page.locator('#btn-menu').click();
+  await page.locator('#btn-newgame').click();
+  await page.locator('#rh-white').fill('Иванов');
+  await page.locator('#rh-black').fill('Петров');
+  await page.locator('#rh-start').click();
+  const bar = page.locator('#recbar');
+  await expect(bar).toBeVisible();
+  const box = await bar.boundingBox();
+  // the recording buttons are on screen without scrolling, in the lower half (thumb zone)
+  expect(box.y + box.height).toBeLessThanOrEqual(812);
+  expect(box.y).toBeGreaterThan(812 / 2);
+  for (const b of await bar.locator('.btn').all()) expect((await b.boundingBox()).height).toBeGreaterThanOrEqual(44);
+  await page.screenshot({ path: OUT + 'phone-record.png' });
+  await ctx.close();
+});
