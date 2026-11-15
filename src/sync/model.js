@@ -1,6 +1,7 @@
 // Mapping between the local library (books/items with SRS stats) and the cloud tables,
 // plus the progress merge rule. Pure functions — no network, no DOM.
 import { Core } from '../core/index.js';
+import { Chess } from '../core/chess.js';
 
 export var REMOTE_PREFIX = 'set-';
 
@@ -67,10 +68,12 @@ export function rowToStat(row) {
   };
 }
 
+// Returns null for a row that cannot be shown safely (no id or an invalid position).
 export function rowToItem(row) {
-  var r = Core.parseMovetext(row.start_fen, row.movetext || '');
+  if (!row || typeof row.id !== 'string' || typeof row.start_fen !== 'string' || !new Chess().load(row.start_fen)) return null;
+  var r = Core.parseMovetext(row.start_fen, String(row.movetext || ''));
   return {
-    id: row.id, type: row.kind === 'game' ? 'game' : 'puzzle', title: row.title || (row.kind === 'game' ? 'Партия' : 'Задача'),
+    id: row.id, type: row.kind === 'game' ? 'game' : 'puzzle', title: clip(row.title, 120) || (row.kind === 'game' ? 'Партия' : 'Задача'),
     startFen: row.start_fen, text: Core.toMovetext(r.root), plies: Core.mainLine(r.root).length, result: '', err: null, warn: 0
   };
 }
@@ -85,7 +88,9 @@ export function mergeRemoteSet(local, set, progressRows, now) {
   var toPush = [];
   var rows = (set.set_items || []).slice().sort(function (a, b) { return (a.position || 0) - (b.position || 0); });
   var items = rows.map(function (row) {
-    var it = rowToItem(row), old = localItems[row.id], remote = byItem[row.id] || null;
+    var it = rowToItem(row);
+    if (!it) return null;
+    var old = localItems[row.id], remote = byItem[row.id] || null;
     var st = mergeStat(old && old.stat, remote);
     if (st) {
       it.stat = st;
@@ -93,10 +98,10 @@ export function mergeRemoteSet(local, set, progressRows, now) {
       if (!sameStat(st, remote)) toPush.push(statToRow(row.id, st));
     }
     return it;
-  });
+  }).filter(Boolean);
   var book = {
     id: REMOTE_PREFIX + set.id,
-    name: set.title,
+    name: clip(set.title, 120) || 'Набор',
     created: (local && local.created) || Date.parse(set.created_at) || now || Date.now(),
     remote: { setId: set.id, source: set.source || '' },
     items: items

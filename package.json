@@ -30,6 +30,7 @@
     "@electric-sql/pglite": "0.5.16",
     "@resvg/resvg-js": "2.6.2",
     "fake-indexeddb": "6.2.8",
+    "happy-dom": "21.0.4",
     "vite": "^8.3.8",
     "vitest": "^5.1.0"
   }

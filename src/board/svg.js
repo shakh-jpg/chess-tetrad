@@ -7,6 +7,7 @@ import { PIECES } from './pieces.js';
 // the same on every device and work offline. One hidden sprite with <symbol>s
 // is added to the document; boards reference it with <use href="#pc-wK">.
 var SPRITE_ID = 'piece-sprite';
+var SQUARE_RE = /^[a-h][1-8]$/, PIECE_RE = /^[wb][KQRBNP]$/;
 function pieceSpriteMarkup() {
   return '<svg id="' + SPRITE_ID + '" xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true"><defs>' +
     Object.keys(PIECES).map(function (k) { return '<symbol id="pc-' + k + '" viewBox="0 0 45 45">' + PIECES[k] + '</symbol>'; }).join('') +
@@ -47,7 +48,11 @@ function boardSVG(pieces, o) {
   });
   for (k in pieces) {
     if (o.dragSq === k) continue;
-    var pf = FILES.indexOf(k[0]), pr = parseInt(k[1], 10), p = pieces[k];
+    var p = pieces[k];
+    // Only real squares and piece codes reach the markup: a broken or malicious FEN
+    // (e.g. from a backup file) must not inject attributes or tags.
+    if (!SQUARE_RE.test(k) || !PIECE_RE.test(p)) continue;
+    var pf = FILES.indexOf(k[0]), pr = parseInt(k[1], 10);
     var px = (fl ? 7 - pf : pf) * 100 + 50, py = (fl ? pr - 1 : 8 - pr) * 100 + 50;
     s += '<use href="#pc-' + p + '" x="' + (px - 50) + '" y="' + (py - 50) + '" width="100" height="100" class="pc ' + p[0] + '" data-sq="' + k + '"/>';
   }

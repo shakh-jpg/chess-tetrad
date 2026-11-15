@@ -15,6 +15,9 @@ import { createLive } from '../live/live.js';
 import { sampleBook } from './sample-book.js';
 import { $, $$, esc, uid, lsGet, lsSet } from './util.js';
 import { countLabel, pliesLabel } from './plural.js';
+import { booksHTML, itemsHTML, filterItems, itemType } from './library.js';
+import { parseBackup, makeBackup, pgnOf, safeName } from './backup.js';
+import { movesHTML } from './moves-view.js';
 
   var activeEditor = null;
 
@@ -253,26 +256,7 @@ import { countLabel, pliesLabel } from './plural.js';
       limit = {}; var n = S.cur; while (n) { limit[n.id] = 1; n = n.parent; }
     }
     function reg(n) { S.nodes[n.id] = n; n.kids.forEach(reg); } reg(S.root);
-    function line(first) {
-      var html = '', node = first, needNum = true;
-      while (node) {
-        if (limit && !limit[node.id]) break;
-        var num = node.color === 'w' ? node.num + '.' : (needNum ? node.num + '…' : '');
-        html += '<a class="mv' + (node === S.cur ? ' cur' : '') + '" data-id="' + node.id + '" href="#">' + (num ? '<i>' + num + '</i>' : '') + esc(fmt(node.san)) + (node.nag ? '<b class="nag">' + node.nag + '</b>' : '') + '</a> ';
-        needNum = false;
-        if (node.comment) { html += '<span class="cm">' + esc(node.comment) + '</span> '; needNum = true; }
-        var par = node.parent;
-        if (!limit && par && par.kids[0] === node && par.kids.length > 1) {
-          for (var i = 1; i < par.kids.length; i++) html += '<div class="var">' + line(par.kids[i]) + '</div>';
-          needNum = true;
-        }
-        node = node.kids[0];
-      }
-      return html;
-    }
-    if (!S.root.kids.length) host.innerHTML = '<p class="empty-note">Ходов пока нет. Сделайте ход на доске, он сохранится в этой записи.</p>';
-    else if (limit && S.cur === S.root) host.innerHTML = '<p class="empty-note">Решение скрыто. Ваши ходы появятся здесь.</p>';
-    else host.innerHTML = line(S.root.kids[0]);
+    host.innerHTML = movesHTML(S.root, S.cur, limit, fmt); // ui/moves-view.js (escaped)
     var cur = $('.mv.cur', host);
     if (cur) { var hb = host.getBoundingClientRect(), cb = cur.getBoundingClientRect(); if (cb.top < hb.top || cb.bottom > hb.bottom) host.scrollTop += cb.top - hb.top - hb.height / 2; }
   }
@@ -309,36 +293,13 @@ import { countLabel, pliesLabel } from './plural.js';
   }
 
   // ================= отрисовка: библиотека =================
+  // markup: ui/library.js (escaped, testable)
   function renderLibrary() {
-    var bh = $('#books');
-    if (!S.books.length) bh.innerHTML = '<p class="empty-note">Пока нет книг. Нажмите «Загрузить книгу».</p>';
-    else bh.innerHTML = S.books.map(function (b) {
-      var on = S.book && S.book.id === b.id, armed = S.delArm === b.id;
-      return '<div class="book' + (on ? ' on' : '') + '"><button class="book-main" data-book="' + b.id + '"><span class="bk-name">' + esc(b.name) + '</span><span class="bk-n">' + b.items.length + '</span></button>' +
-        '<button class="icon-btn' + (armed ? ' danger' : '') + '" data-delbook="' + b.id + '" title="Удалить книгу" aria-label="Удалить книгу">' + (armed ? 'Удалить?' : '×') + '</button></div>';
-    }).join('');
+    $('#books').innerHTML = booksHTML(S.books, S.book && S.book.id, S.delArm);
     var ih = $('#items'), book = S.book;
     $$('.chip').forEach(function (c) { c.classList.toggle('on', c.getAttribute('data-f') === S.filter); });
     if (!book) { ih.innerHTML = ''; return; }
-    var q = S.q.trim().toLowerCase();
-    var list = book.items.filter(function (it) {
-      if (S.filter === 'game' && it.type !== 'game') return false;
-      if (S.filter === 'puzzle' && it.type !== 'puzzle') return false;
-      return !q || it.title.toLowerCase().indexOf(q) >= 0;
-    });
-    if (!list.length) { ih.innerHTML = '<p class="empty-note">Ничего не найдено.</p>'; return; }
-    var lastSec = null;
-    ih.innerHTML = list.map(function (it) {
-      var on = S.item && S.item.id === it.id, head = '';
-      if (it.section && it.section !== lastSec && !q) head = '<div class="sec-title">' + esc(it.section) + '</div>';
-      if (!q) lastSec = it.section || lastSec;
-      return head + '<div class="item' + (on ? ' on' : '') + '" data-item="' + it.id + '">' +
-        '<span class="tag ' + it.type + '">' + (it.type === 'puzzle' ? 'З' : 'П') + '</span>' +
-        '<button class="it-main" data-open="' + it.id + '"><span class="it-title">' + esc(it.title) + '</span>' +
-        '<span class="it-meta">' + (it.plies || 0) + ' п/х' + (it.err ? ' · <b class="warn">ошибка разбора</b>' : '') + statLabel(it) + '</span></button>' +
-        '<button class="icon-btn" data-edit="' + it.id + '" title="Править текст ходов" aria-label="Править">✎</button>' +
-        '<button class="icon-btn" data-delitem="' + it.id + '" title="Удалить" aria-label="Удалить">×</button></div>';
-    }).join('');
+    ih.innerHTML = itemsHTML(filterItems(book.items, S.filter, S.q), S.item && S.item.id, S.q);
   }
 
   // ================= движок (оценка: engine/uci.js) =================
@@ -515,36 +476,26 @@ import { countLabel, pliesLabel } from './plural.js';
     document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
     return Promise.resolve();
   }
-  function safeName(n) { return String(n || 'kniga').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60) || 'kniga'; }
-  function pgnOf(it, movetext) {
-    var fen = it.startFen || Core.START, t = function (k, v) { return '[' + k + ' "' + String(v).replace(/[\\"]/g, ' ') + '"]'; };
-    var res = it.result && /^(1-0|0-1|1\/2-1\/2|\*)$/.test(it.result) ? it.result : '*';
-    var tags = [t('Event', it.title || '?'), t('Site', '?'), t('Date', '????.??.??'), t('Round', '?'), t('White', '?'), t('Black', '?'), t('Result', res)];
-    if (fen.split(' ')[0] !== Core.START.split(' ')[0]) { tags.push(t('SetUp', '1')); tags.push(t('FEN', fen)); }
-    var mt = movetext || '';
-    var body = (mt ? mt + ' ' : '') + res;
-    return tags.join('\n') + '\n\n' + body.replace(/(.{1,90})(\s+|$)/g, '$1\n').trim() + '\n';
-  }
+  // backup/PGN helpers: ui/backup.js (input from backup files is sanitized there)
   function exportBackup() {
-    var obj = { app: 'shakhmatnaya-tetrad', v: 1, date: new Date().toISOString(), books: S.books.map(function (b) { return JSON.parse(JSON.stringify(b)); }), samples: Samples.exportAll() };
-    return saveFile('shakhmatnaya-tetrad-' + new Date().toISOString().slice(0, 10) + '.json', JSON.stringify(obj), 'application/json');
+    var obj = makeBackup(S.books, Samples.exportAll());
+    return saveFile('shakhmatnaya-tetrad-' + new Date().toISOString().slice(0, 10) + '.json', JSON.stringify(obj), 'application/json')
+      .then(function () { lsSet('st.backupAt', Date.now()); });
   }
   function importBackup(text) {
-    var o; try { o = JSON.parse(text); } catch (e) { return { err: 'Это не файл копии: не читается как JSON.' }; }
-    if (!o || o.app !== 'shakhmatnaya-tetrad' || !Array.isArray(o.books)) return { err: 'Это не копия библиотеки «Шахматной тетради».' };
+    var r = parseBackup(text);
+    if (r.err) return r;
     var add = 0, rep = 0;
-    o.books.forEach(function (b) {
-      if (!b || typeof b.id !== 'string' || typeof b.name !== 'string' || !Array.isArray(b.items) || b.id === '__recog') return;
-      b.items = b.items.filter(function (it) { return it && typeof it.id === 'string' && typeof it.title === 'string'; });
+    r.books.forEach(function (b) {
       var i = -1; S.books.forEach(function (x, k) { if (x.id === b.id) i = k; });
       if (i >= 0) { S.books[i] = b; rep++; } else { S.books.push(b); add++; }
       Store.put(JSON.parse(JSON.stringify(b)));
     });
-    if (o.samples) Samples.merge(o.samples);
+    if (r.samples) Samples.merge(r.samples);
     S.books.sort(function (a, b) { return (a.created || 0) - (b.created || 0); });
     if (!S.book || !S.books.some(function (x) { return x === S.book; })) S.book = S.books[0] || null;
     renderAll();
-    return { add: add, rep: rep };
+    return { add: add, rep: rep, skipped: r.skipped };
   }
   function openData() {
     var cnt = S.books.reduce(function (n, b) { return n + b.items.length; }, 0);
@@ -564,7 +515,7 @@ import { countLabel, pliesLabel } from './plural.js';
       f.text().then(function (t) {
         var r = importBackup(t);
         st.className = 'status ' + (r.err ? 'bad' : 'good');
-        st.textContent = r.err || 'Загружено. Новых книг: ' + r.add + ', заменено: ' + r.rep + '.';
+        st.textContent = r.err || 'Загружено. Новых книг: ' + r.add + ', заменено: ' + r.rep + '.' + (r.skipped ? ' Пропущено записей с ошибками: ' + r.skipped + '.' : '');
       });
     });
     $('#dt-pgn-book', m.el).addEventListener('click', function () {
@@ -811,8 +762,8 @@ import { countLabel, pliesLabel } from './plural.js';
       (info.diagrams ? ' Позиции прочитаны с диаграмм книги: ' + info.diagrams + '.' : '') +
       (info.empty && !info.diagrams ? ' Страниц без текста: ' + info.empty + ' из ' + info.pages + '.' : '') + '</p>' +
       '<div class="rv-list" id="rv-list">' + items.map(function (it, i) {
-        return '<div class="rv-row' + (it.err ? ' bad' : '') + '" data-i="' + i + '"><input type="checkbox" checked aria-label="Добавить"><span class="tag ' + it.type + '">' + (it.type === 'puzzle' ? 'З' : 'П') + '</span>' +
-          '<input class="rv-title" type="text" value="' + esc(it.title) + '"><span class="rv-meta">' + it.plies + ' п/х' + (it.err ? ' · ошибка у «' + esc(it.err.token) + '»' : '') + '</span>' +
+        return '<div class="rv-row' + (it.err ? ' bad' : '') + '" data-i="' + i + '"><input type="checkbox" checked aria-label="Добавить"><span class="tag ' + itemType(it) + '">' + (itemType(it) === 'puzzle' ? 'З' : 'П') + '</span>' +
+          '<input class="rv-title" type="text" value="' + esc(it.title) + '"><span class="rv-meta">' + (Number(it.plies) || 0) + ' п/х' + (it.err ? ' · ошибка у «' + esc(it.err.token) + '»' : '') + '</span>' +
           '<button class="icon-btn" data-rvedit="' + i + '" title="Править ходы">✎</button></div>';
       }).join('') + '</div>' +
       '<div class="modal-act"><button class="btn" data-close>Отмена</button><button class="btn primary" id="rv-add">Добавить в библиотеку</button></div>';
