@@ -294,7 +294,8 @@ import { movesHTML } from './moves-view.js';
     });
     if (!lines.length && S.engineKind && S.engineKind !== 'none') html += '<p class="empty-note">Считаю…</p>';
     host.innerHTML = html;
-    if (bar && lines[0]) bar.style.height = whiteShare(lines[0]).toFixed(1) + '%';
+    // neutral 50/50 until the engine has an evaluation for the current position
+    if (bar) bar.style.height = lines[0] ? whiteShare(lines[0]).toFixed(1) + '%' : '50%';
   }
   function stopEngineRun() { try { Engine.stop(); } catch (e) {} S.engineLines = {}; }
   function scheduleEngine() {
