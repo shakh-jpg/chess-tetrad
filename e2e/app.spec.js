@@ -30,6 +30,7 @@ test('solve a puzzle, reload: the progress is still there', async ({ page }) => 
 test('paste PGN: the game appears in the library', async ({ page }) => {
   const errors = await openApp(page);
   await page.locator('#btn-import').click();
+  await expect(page.locator('.rights-note')).toContainText('вправе пользоваться');
   await page.locator('.paste summary').click();
   await page.locator('#imp-text').fill('[Event "E2E"]\n[White "Тестов"]\n[Black "Проверкин"]\n\n1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 {Испанская} 4. Ba4 Nf6 *');
   await page.locator('#imp-go-text').click();

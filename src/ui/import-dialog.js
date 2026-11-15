@@ -55,6 +55,7 @@ export function createImportDialog(ctx) {
       '<strong>Перетащите файл сюда или нажмите для выбора</strong><span>PDF, EPUB, DOCX, FB2, TXT, PGN. Партии ищутся по записи ходов, задачи — по позиции в виде FEN.</span></label>' +
       '<details class="paste"><summary>Или вставьте текст</summary><textarea id="imp-text" rows="7" placeholder="1. e4 e5 2. Кf3 Кc6 …" spellcheck="false"></textarea><button class="btn" id="imp-go-text">Разобрать текст</button></details>' +
       '<p class="hint-note">Сканы без текстового слоя не читаются: распознавание текста с картинки здесь недоступно. Диаграммы из книг переводите кнопкой «Диаграмма».</p>' +
+      '<p class="hint-note rights-note">Загружайте только книги, которыми вы вправе пользоваться. Файл читается только на этом устройстве и никуда не отправляется.</p>' +
       '</div>', 'wide');
     var body = $('#imp-body', m.el), drop = $('#drop', m.el);
     function run(files, pasted) {
