@@ -149,8 +149,9 @@ export function createLive(ctx) {
     function bar() {
       var el = $('#livebar'), btn = $('#btn-live');
       if (!el) return;
-      if (!inited) { btn.hidden = false; btn.textContent = 'Урок'; el.hidden = true; return; }
-      if (!room) { btn.hidden = false; btn.textContent = 'Урок'; el.hidden = true; return; }
+      // Outside claude.ai there is no live room: the lesson button is hidden (online lessons come in stage 5).
+      if (!inited) { btn.hidden = true; el.hidden = true; return; }
+      if (!room) { btn.hidden = true; el.hidden = true; return; }
       var students = peersList().filter(function (p) { return !p.isMe && p.presence && p.presence.role === 's'; }).length;
       var html = '', cls = '';
       if (isT) {
