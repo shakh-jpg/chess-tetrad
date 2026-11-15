@@ -6,6 +6,13 @@ Installable PWA that works offline, with Stockfish 19 (lite, WASM) built in.
 
 **Открыть приложение:** https://shakh-jpg.github.io/chess-tetrad/
 
+| Компьютер | Телефон: задача | Телефон: меню |
+|---|---|---|
+| <img src="docs/img/desktop.png" alt="Партия с вариантами и движком на компьютере" width="420"> | <img src="docs/img/phone-puzzle.png" alt="Задача на телефоне" width="180"> | <img src="docs/img/phone-menu.png" alt="Меню на телефоне" width="180"> |
+
+**Онлайн-урок** (общая доска «тренер → ученики») — в планах (этап 5). Сейчас: задания и прогресс
+через «Аккаунт», когда облако подключено; без облака всё работает на устройстве.
+
 ## Для ученика: как установить за 3 шага
 
 **iPhone / iPad**
@@ -42,6 +49,10 @@ npm test          # unit tests (Vitest)
 npm run build     # production build into dist/ (copies the engine, writes dist/sw.js)
 npm run preview   # serve dist/ on http://127.0.0.1:4173
 npm run icons     # re-render public/icons/*.png (only when the icon design changes)
+npm run lint      # ESLint
+npm run typecheck # tsc --noEmit for files marked // @ts-check
+npm run e2e       # Playwright end-to-end tests on the build (locally: installed Edge)
+npm run screenshots # re-render docs/img/*.png
 ```
 
 ## Layout
@@ -58,9 +69,10 @@ npm run icons     # re-render public/icons/*.png (only when the icon design chan
 | `src/srs` | spaced repetition (pure functions) |
 | `src/live` | live lesson (works only inside claude.ai for now) |
 | `src/pwa` | service worker registration, install button, iOS hint |
-| `src/ui` | state, rendering, dialogs, events, phone menu |
+| `src/ui` | `app.js` (moves, solving, navigation, rendering, events), `state.js`, `dialogs.js`, `*-dialog.js` (import, editor/diagram, progress, data), `library.js` / `moves-view.js` (escaped markup), `backup.js`, `account.js`, phone menu |
 | `scripts` | engine copy, service-worker template and Vite plugin, icon renderer |
 | `public` | manifest, icons; `public/engine/` is generated (git-ignored) |
+| `e2e` | Playwright end-to-end tests and README screenshots |
 | `tests` | Vitest tests; `equivalence.test.js` compares the parser with the original prototype |
 
 ## Offline

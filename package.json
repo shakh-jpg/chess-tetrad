@@ -1,6 +1,6 @@
 {
   "name": "shakhmatnaya-tetrad",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Chess notebook for a coach and students: games, variations, puzzles with spaced repetition.",
   "license": "GPL-3.0-or-later",
