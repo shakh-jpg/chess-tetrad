@@ -74,6 +74,8 @@ declare
   v_coach text;
 begin
   if auth.uid() is null then return jsonb_build_object('ok', false, 'error', 'no_session'); end if;
+  -- a coach session must never become a student's device (same rule as redeem_invite_code)
+  if public.is_coach() then return jsonb_build_object('ok', false, 'error', 'coach_cannot_join'); end if;
   if (select count(*) from public.login_attempts
        where not ok and at > now() - interval '15 minutes'
          and (login = v_login or user_id = auth.uid())) >= 10 then

@@ -59,6 +59,8 @@ describe('student login and password', () => {
   it('only for the current student: a coach or a stranger cannot set anyone\'s password', async () => {
     expect(await rpc(U.coach, 'set_student_login', { p_login: 'masha', p_password: 'hacked123' })).toEqual({ ok: false, error: 'not_student' });
     expect(await rpc(U.bad, 'set_student_login', { p_login: 'masha', p_password: 'hacked123' })).toEqual({ ok: false, error: 'not_student' });
+    // a coach session cannot sign in as a student (it would become the student's device)
+    expect(await rpc(U.coach, 'student_login', { p_login: 'masha', p_password: 'whatever1' })).toEqual({ ok: false, error: 'coach_cannot_join' });
     // Masha sets her own; Petya's call changes only Petya
     expect((await rpc(U.dev2, 'set_student_login', { p_login: 'masha', p_password: 'masha12345' })).ok).toBe(true);
     expect((await rpc(U.dev1, 'set_student_login', { p_login: 'petya2014', p_password: 'secret123' })).ok).toBe(true);
