@@ -134,3 +134,18 @@ describe('scan results -> library items', () => {
     expect(book.items[1].title).toBe('Моё название');
   });
 });
+
+describe('hatch spacing picks the density window', async () => {
+  const { hatchGap, windowFor } = await import('../src/scan/recognize.js');
+  const S = 48;
+  // a 48x48 dark square with diagonal hatching: lines 2 px wide every `period` px
+  const sq = (period) => { const g = new Uint8Array(S * S).fill(255); for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) if ((x + y) % period < 2) g[y * S + x] = 0; return g; };
+  it('dense hatching keeps the 5x5 window, sparse hatching gets a wider one', () => {
+    expect(hatchGap([sq(6), sq(6)])).toBe(4);
+    expect(windowFor(hatchGap([sq(6)]))).toBe(2);
+    expect(hatchGap([sq(9)])).toBe(7);
+    expect(windowFor(hatchGap([sq(9)]))).toBe(4);
+    expect(windowFor(40)).toBe(5); // never wider than 11x11
+    expect(hatchGap([new Uint8Array(S * S).fill(255)])).toBe(0); // no hatching measured
+  });
+});

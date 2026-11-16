@@ -93,7 +93,11 @@ export function findBoards(g, opts) {
       break;
     }
   }
-  return boards.sort(function (a, b) { return (a.outer.y - b.outer.y) || (a.outer.x - b.outer.x); });
+  // reading order: rows of diagrams top-down (a few px of difference is still one row), left to right
+  return boards.sort(function (a, b) {
+    var row = Math.abs(a.outer.y - b.outer.y) < Math.min(a.outer.h, b.outer.h) / 2;
+    return row ? a.outer.x - b.outer.x : a.outer.y - b.outer.y;
+  });
 }
 
 /** @param {Rect} a @param {Rect} b */

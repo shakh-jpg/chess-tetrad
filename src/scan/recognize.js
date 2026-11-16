@@ -51,10 +51,13 @@ export function positionProblems(cells, side) {
 // into a mesh that the generic recognizer takes for a piece. On a hatched square we therefore look
 // at the local ink density instead: hatching is "half dark" everywhere, a white piece is a region
 // that is clearly white (its interior), a black piece a region that is solid black.
-var S = Recog._S, M = 3, WIN = 2; // 48-px squares, 3-px margin, 5x5 density window
+// boards whose lower 80% of piece heights are within 7% of the tallest: "flat" (pawns as tall as kings)
+export var FLAT_HEIGHTS = 0.93;
+var S = Recog._S, M = 3, WIN = 2; // 48-px squares, 3-px margin, default 5x5 density window // 48-px squares, 3-px margin, 5x5 density window
 
-/** Integral-image density of dark pixels in a (2*WIN+1)^2 window, clipped to the square. */
-function densityMap(gray) {
+/** Integral-image density of dark pixels in a (2*win+1)^2 window, clipped to the square. */
+function densityMap(gray, win) {
+  var WIN = win || 2;
   var I = new Int32Array((S + 1) * (S + 1));
   for (var y = 0; y < S; y++) { var run = 0; for (var x = 0; x < S; x++) { run += gray[y * S + x] < 128 ? 1 : 0; I[(y + 1) * (S + 1) + x + 1] = I[y * (S + 1) + x + 1] + run; } }
   var D = new Float32Array(S * S);
@@ -91,9 +94,34 @@ export function coreDarkness(gray) {
   return n ? d / n : 0;
 }
 
+/**
+ * Typical white gap between hatch lines (px, along rows) on the dark squares of a board: the
+ * density window must be wider than the gap, or the gaps of sparse hatching look like the white
+ * body of a piece. Measured in the outer ring of the squares, where pieces rarely reach.
+ */
+export function hatchGap(darkGrays) {
+  var runs = [];
+  darkGrays.forEach(function (gray) {
+    for (var y = M; y < S - M; y++) {
+      if (y > M + 5 && y < S - M - 6) continue;
+      var start = -1;
+      for (var x = M; x < S - M; x++) {
+        var ink = gray[y * S + x] < 128;
+        if (!ink && start < 0) start = x;
+        if (ink && start >= 0) { if (start > M) runs.push(x - start); start = -1; }
+      }
+    }
+  });
+  if (runs.length < 20) return 0;
+  runs.sort(function (a, b) { return a - b; });
+  return runs[runs.length >> 1];
+}
+/** Density window half-size for a hatch gap. */
+export function windowFor(gap) { return Math.max(WIN, Math.min(5, Math.ceil(gap / 2))); }
+
 /** Analysis of a hatched square in the format of Recog._an: {empty, color, bits, aspect, hr, dr}. */
-export function analyseHatched(gray) {
-  var D = densityMap(gray), mask = new Uint8Array(S * S), white = 0, solid = 0;
+export function analyseHatched(gray, win) {
+  var D = densityMap(gray, win), mask = new Uint8Array(S * S), white = 0, solid = 0;
   for (var y = M + 1; y < S - M - 1; y++) for (var x = M + 1; x < S - M - 1; x++) {
     var k = y * S + x, d = D[k];
     if (d < 0.08) { mask[k] = 1; white++; } else if (d > 0.88) { mask[k] = 1; solid++; }
@@ -146,9 +174,11 @@ export function recognizeSquares(g, r, samples) {
   var ringsDark = squares.filter(function (s) { return (s.row + s.col) % 2 === 1; }).map(function (s) { return ringDensity(s.gray); }).sort();
   var hatchLevel = ringsDark[ringsDark.length >> 1] || 0;
   var hatchedBoard = hatchLevel > 0.12 && hatchLevel < 0.8;
+  var gap = hatchedBoard ? hatchGap(squares.filter(function (s) { return (s.row + s.col) % 2 === 1; }).map(function (s) { return s.gray; })) : 0;
+  var win = windowFor(gap);
   squares.forEach(function (s) {
     var darkSq = (s.row + s.col) % 2 === 1;
-    var a = hatchedBoard && darkSq ? analyseHatched(s.gray) : Recog._an(s.gray);
+    var a = hatchedBoard && darkSq ? analyseHatched(s.gray, win) : Recog._an(s.gray);
     // Colour on plain squares: book pieces have thick outlines, so "more than half of the
     // silhouette is dark" calls white pieces black. The core of the piece decides instead:
     // filled for a black piece, mostly white for a white one.
@@ -157,9 +187,14 @@ export function recognizeSquares(g, r, samples) {
     an.push(a);
     if (!a.empty && a.hr > maxHr) maxHr = a.hr;
   });
+  // Some book fonts draw pawns as tall as kings: then the height prior of the reference pieces
+  // misleads (pawns become rooks). Pieces on plain squares (exact outlines) show it.
+  var hs = an.filter(function (a) { return !a.empty && !a.hatched; }).map(function (a) { return a.hr; }).sort(function (x, y) { return x - y; });
+  var flat = hs.length >= 4 && hs[Math.floor(hs.length * 0.2)] / hs[hs.length - 1] > FLAT_HEIGHTS;
+  var opts = { heightWeight: flat ? 0 : 0.3 };
   var out = an.map(function (a) {
     if (a.empty) return { sq: a.sq, p: null, conf: 1 };
-    var cl = Recog._classify(a, maxHr, samples || null);
+    var cl = Recog._classify(a, maxHr, samples || null, opts);
     // the colour comes from the square analysis (fill vs. outline), the type from the shape match
     var scores = {};
     (cl.ranked || []).forEach(function (c) { if (c.p && c.p !== 'null') { var t = c.p[1]; if (scores[t] === undefined || c.s > scores[t]) scores[t] = c.s; } });
@@ -168,7 +203,7 @@ export function recognizeSquares(g, r, samples) {
     return { sq: a.sq, p: p, conf: cl.conf, dr: a.dr, scores: scores, f: { bits: Array.from(a.bits, function (v) { return +v.toFixed(2); }), asp: +a.aspect.toFixed(3), rel: +(a.hr / maxHr).toFixed(3), dr: +a.dr.toFixed(3) } };
   });
   applyChessRules(out);
-  return { squares: out, hatched: hatchedBoard, hatchLevel: hatchLevel };
+  return { squares: out, hatched: hatchedBoard, hatchLevel: hatchLevel, hatchGap: gap, win: win, flatHeights: flat };
 }
 
 // Next best type for a square, excluding some types. @returns {string|null}

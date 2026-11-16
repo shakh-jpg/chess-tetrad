@@ -107,17 +107,19 @@ var Recog = (function () {
 
   function iouBits(a, b) { var inter = 0, uni = 0; for (var i = 0; i < T * T; i++) { inter += Math.min(a[i], b[i]); uni += Math.max(a[i], b[i]); } return uni ? inter / uni : 0; }
   // Возвращает {p, conf}: p = 'wQ' | ... | null (пусто). Образцы пользователя (samples) сильнее встроенных эталонов.
-  function scoreSample(sq, m, rel) {
-    return iouBits(sq.bits, m.bits) - 0.3 * Math.abs(rel - m.rel) - 0.25 * Math.abs(sq.aspect - m.asp) - (m.dr === undefined ? 0 : 1.5 * Math.abs(sq.dr - m.dr)) - (m.p && m.p[0] !== sq.color ? 0.12 : 0);
+  function scoreSample(sq, m, rel, hw) {
+    return iouBits(sq.bits, m.bits) - (hw === undefined ? 0.3 : hw) * Math.abs(rel - m.rel) - 0.25 * Math.abs(sq.aspect - m.asp) - (m.dr === undefined ? 0 : 1.5 * Math.abs(sq.dr - m.dr)) - (m.p && m.p[0] !== sq.color ? 0.12 : 0);
   }
-  function classify(sq, maxHr, samples) {
-    var tp = buildTemplates(), best = {}, rel = sq.hr / maxHr;
+  // opts.heightWeight: weight of the piece-height prior (scanned books whose pawns are as tall as
+  // kings switch it off for the built-in references; 0.3 by default)
+  function classify(sq, maxHr, samples, opts) {
+    var tp = buildTemplates(), best = {}, rel = sq.hr / maxHr, hw = opts && opts.heightWeight !== undefined ? opts.heightWeight : 0.3;
     function put(label, s) { if (best[label] === undefined || s > best[label]) best[label] = s; }
     TYPES.forEach(function (t) {
-      var tpl = tp[t], s = iouBits(sq.bits, tpl.bits) - 0.3 * Math.abs(rel - PRIOR_H[t]) - 0.25 * Math.abs(sq.aspect - tpl.aspect);
+      var tpl = tp[t], s = iouBits(sq.bits, tpl.bits) - hw * Math.abs(rel - PRIOR_H[t]) - 0.25 * Math.abs(sq.aspect - tpl.aspect);
       put(sq.color + t, s);
     });
-    BASE.forEach(function (m) { put(m.p, scoreSample(sq, m, rel) + 0.04); });
+    BASE.forEach(function (m) { put(m.p, scoreSample(sq, m, rel, hw) + 0.04); });
     (samples || []).forEach(function (m) { put(m.p || 'null', scoreSample(sq, m, rel) + 0.1); });
     var arr = Object.keys(best).map(function (k) { return { p: k, s: best[k] }; }).sort(function (p, q) { return q.s - p.s; });
     // ranked: all candidates (best first) — used by the scanned-book recognizer to apply chess rules
