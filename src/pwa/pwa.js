@@ -51,7 +51,11 @@ export function initInstall(openModal) {
 export function registerSW(swUrl) {
   if (!('serviceWorker' in navigator)) return;
   var reloading = false;
+  // reload only when a new version replaces the old one; on the very first visit the worker just
+  // takes control of the open page (a reload then would close whatever the user has started)
+  var hadController = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.addEventListener('controllerchange', function () {
+    if (!hadController) { hadController = true; return; }
     if (reloading) return; reloading = true; window.location.reload();
   });
   navigator.serviceWorker.register(swUrl).then(function (reg) {
