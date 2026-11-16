@@ -427,7 +427,8 @@ import { movesHTML } from './moves-view.js';
     var invalid = state.results.filter(function (x) { return !x.valid; }).length;
     if (modal) modal.close();
     S.book = r.book; S.filter = 'all'; renderAll();
-    toast('В книгу «' + name + '» добавлено позиций: ' + res.added + (res.updated ? ', обновлено: ' + res.updated : '') + (invalid ? '. Не прошли проверку: ' + invalid : '') + '.');
+    toast('В книгу «' + name + '» добавлено позиций: ' + res.added + (res.updated ? ', обновлено: ' + res.updated : '') +
+      ' (помечены «не проверено»)' + (invalid ? '. С ошибками и не сохранены: ' + invalid : '') + '.');
   });
   var openProgress = createProgressDialog(dialogCtx).openProgress;
   var dataDialog = createDataDialog(dialogCtx), openData = dataDialog.openData;

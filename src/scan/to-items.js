@@ -4,7 +4,7 @@
 
 /**
  * @typedef {{ id: string, page: number, index: number, fen: string, side: string, task: boolean,
- *   valid: boolean, number?: string, moves?: string, status?: string }} ScanResult
+ *   valid: boolean, number?: string, moves?: string, status?: string, checked?: boolean }} ScanResult
  */
 
 /** @param {string} file @returns {string} */
@@ -16,12 +16,14 @@ export function scanBookName(file) { return String(file || 'Скан').replace(/
  */
 export function scanTitle(r, source) {
   var num = r.number ? r.number : 'стр. ' + (r.page + 1) + ', диаграмма ' + (r.index + 1);
-  return (r.number ? 'Диаграмма ' + num : 'Диаграмма (' + num + ')') + (r.task ? ' · задание' : '');
+  return (r.number ? 'Диаграмма ' + num : 'Диаграмма (' + num + ')') + (r.task ? ' · задание' : '') +
+    (r.status === 'confirmed' ? '' : ' · не проверено');
 }
 
 /**
- * Only valid, not skipped results become items. Ids are stable (page:index) so saving twice
- * updates instead of duplicating.
+ * Only valid (playable), not skipped results become items. Ids are stable (page:index) so saving
+ * twice updates instead of duplicating. A position the coach has not confirmed on the review
+ * screen is marked "не проверено": a playable position may still have misread pieces.
  * @param {ScanResult[]} results @param {string} source
  */
 export function scanItemsFrom(results, source) {
@@ -29,7 +31,8 @@ export function scanItemsFrom(results, source) {
     return {
       id: 'scan-' + r.page + '-' + r.index, type: 'puzzle', title: scanTitle(r, source), startFen: r.fen,
       text: r.moves || '', plies: 0, result: '', err: null, warn: 0,
-      note: (r.task ? 'Задание. ' : '') + (r.side === 'b' ? 'Ход чёрных.' : 'Ход белых.'),
+      note: (r.status === 'confirmed' ? '' : 'Распознано автоматически, не проверено. ') + (r.task ? 'Задание. ' : '') + (r.side === 'b' ? 'Ход чёрных.' : 'Ход белых.'),
+      unchecked: r.status !== 'confirmed',
       section: 'Стр. ' + (r.page + 1), srcPage: r.page + 1, num: r.index + 1,
       source: source + ', стр. ' + (r.page + 1) + (r.number ? ', диаграмма ' + r.number : '')
     };

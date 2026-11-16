@@ -79,9 +79,9 @@ export function findBoards(g, opts) {
       var bot = edges[j], h = bot.y1 - top.y0 + 1;
       if (h > w * 1.12) break;
       if (h < w * 0.88) continue;
-      // one end must match closely; the other may differ a little (a frame line can merge with
+      // one end must match closely; the other may differ by up to 12% (a frame line can merge with
       // the hatching of a corner square and break) — the vertical edges are checked below anyway
-      var tol = Math.max(4, w * 0.02), loose = Math.max(6, w * 0.06);
+      var tol = Math.max(4, w * 0.02), loose = Math.max(6, w * 0.12);
       var dl = Math.abs(bot.x0 - top.x0), dr = Math.abs(bot.x1 - top.x1);
       if (!((dl <= tol && dr <= loose) || (dr <= tol && dl <= loose))) continue;
       var x0 = Math.min(top.x0, bot.x0), x1 = Math.max(top.x1, bot.x1);

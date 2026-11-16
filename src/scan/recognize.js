@@ -177,6 +177,9 @@ function nextBest(sq, exclude) {
   Object.keys(sq.scores || {}).forEach(function (t) { if (exclude.indexOf(t) < 0 && sq.scores[t] > bs) { bs = sq.scores[t]; best = t; } });
   return best;
 }
+// how far below the best match "king" may be for a piece to be turned into the missing king
+// (measured on real books: misread kings were within 0.23, pawns of king-less diagrams 0.35+)
+export var KING_GAP = -0.25;
 // Chess rules as a prior: exactly one king per side (the most king-like piece of that colour),
 // no pawns on the first or last rank. Changed squares are marked low-confidence.
 export function applyChessRules(out) {
@@ -195,7 +198,10 @@ export function applyChessRules(out) {
     var pool = kings.length ? kings : mine;
     if (!pool.length) return;
     var king = pool.slice().sort(function (a, b) { return kingScore(b) - kingScore(a); })[0];
-    if (king.p[1] !== 'K') { king.p = c + 'K'; king.conf = 0; king.fixed = true; }
+    // no king read: promote a piece only when "king" is a close second for it. Book illustrations
+    // without kings exist (pawn structures); then the position stays "no king" and goes to review.
+    if (!kings.length && kingScore(king) < KING_GAP) return;
+    if (king.p[1] !== 'K') { king.from = king.p; king.p = c + 'K'; king.conf = 0; king.fixed = true; }
     kings.forEach(function (x) { if (x !== king) { var t = nextBest(x, ['K']); x.p = t ? c + t : null; x.conf = 0; x.fixed = true; } });
   });
   out.forEach(function (x) {

@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest';
 import { findBoards, readMarker, horizontalRuns } from '../src/scan/boards.js';
 import { scanItemsFrom, mergeScanItems, scanBookName, scanTitle } from '../src/scan/to-items.js';
-import { castlingFrom, positionProblems } from '../src/scan/recognize.js';
+import { castlingFrom, positionProblems, applyChessRules } from '../src/scan/recognize.js';
 
 // --- a tiny raster for synthetic pages
 function page(w, h) { return { width: w, height: h, gray: new Uint8ClampedArray(w * h).fill(255) }; }
@@ -53,6 +53,10 @@ describe('board detection on a synthetic page', () => {
     diagram(h, 100, 100, 300);
     rect(h, 384, 100, 6, 3, 255); // gap in the top line near the right corner (~5% of the width, as in a real book)
     expect(findBoards(h).length).toBe(1);
+    const k = page(800, 600);
+    diagram(k, 100, 100, 300);
+    rect(k, 368, 397, 30, 3, 255); // bottom line merged into the corner square: 10% missing
+    expect(findBoards(k).length).toBe(1);
   });
 });
 
@@ -89,6 +93,19 @@ describe('position checks', () => {
   });
 });
 
+describe('chess rules prior', () => {
+  const sq = (sq, p, scores) => ({ sq, p, conf: 0.5, scores });
+  it('turns a piece into the missing king only when "king" is a close second for it', () => {
+    const out = applyChessRules([sq('e8', 'bN', { N: 0.52, K: 0.50, P: 0.3 }), sq('d7', 'bP', { P: 0.6, K: 0.3 }), sq('e1', 'wK', { K: 0.7 })]);
+    expect(out[0].p).toBe('bK');
+    expect(out[1].p).toBe('bP');
+  });
+  it('leaves a king-less illustration alone (pawn structures) — it goes to review as "no king"', () => {
+    const out = applyChessRules([sq('a6', 'bP', { P: 0.65, R: 0.53, K: 0.43 }), sq('g4', 'wP', { P: 0.61, K: 0.51 })]);
+    expect(out.map((x) => x.p)).toEqual(['bP', 'wP']);
+  });
+});
+
 describe('scan results -> library items', () => {
   const R = [
     { id: '60:0', page: 60, index: 0, fen: '2k5/3p3r/K3pP1P/4R3/8/8/8/8 w - - 0 1', side: 'w', task: true, valid: true },
@@ -99,10 +116,14 @@ describe('scan results -> library items', () => {
   it('valid, not skipped diagrams become puzzles with page/number in the source', () => {
     const items = scanItemsFrom(R, 'Учебник (скан)');
     expect(items.map((i) => i.id)).toEqual(['scan-60-0', 'scan-61-0']);
-    expect(items[0]).toMatchObject({ type: 'puzzle', title: 'Диаграмма (стр. 61, диаграмма 1) · задание', srcPage: 61, note: 'Задание. Ход белых.' });
-    expect(items[1]).toMatchObject({ title: 'Диаграмма 1.157', source: 'Учебник (скан), стр. 62, диаграмма 1.157', note: 'Ход чёрных.' });
+    expect(items[0]).toMatchObject({ type: 'puzzle', title: 'Диаграмма (стр. 61, диаграмма 1) · задание · не проверено', srcPage: 61, unchecked: true,
+      note: 'Распознано автоматически, не проверено. Задание. Ход белых.' });
+    expect(items[1]).toMatchObject({ title: 'Диаграмма 1.157 · не проверено', source: 'Учебник (скан), стр. 62, диаграмма 1.157' });
+    // confirmed on the review screen: no mark
+    const c = scanItemsFrom([{ ...R[2], status: 'confirmed' }], 'Учебник (скан)')[0];
+    expect(c).toMatchObject({ title: 'Диаграмма 1.157', note: 'Ход чёрных.', unchecked: false });
     expect(scanBookName('Дворецкий. Учебник эндшпиля.pdf')).toBe('Дворецкий. Учебник эндшпиля (скан)');
-    expect(scanTitle({ page: 0, index: 2, task: false })).toBe('Диаграмма (стр. 1, диаграмма 3)');
+    expect(scanTitle({ page: 0, index: 2, task: false, status: 'confirmed' })).toBe('Диаграмма (стр. 1, диаграмма 3)');
   });
   it('saving again updates by id, keeps progress and the coach\'s edits', () => {
     const book = { items: [] };
