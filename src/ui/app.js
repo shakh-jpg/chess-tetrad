@@ -20,7 +20,9 @@ import { createImportDialog } from './import-dialog.js';
 import { createEditorDialog } from './editor-dialog.js';
 import { createRecordDialog } from './record-dialog.js';
 import { createScanDialog } from './scan-dialog.js';
-import { processScanPage, onScanResults, setScanResultsHandler } from '../scan/process.js';
+import { processScanPage, onScanResults, setScanResultsHandler, profileName, learnBoard, recognizeAgain } from '../scan/process.js';
+import { openScanReview } from './scan-review.js';
+import { saveJob, getImages } from '../scan/scan-store.js';
 import { scanBookName, scanItemsFrom, mergeScanItems } from '../scan/to-items.js';
 import { ensureBook } from './record.js';
 import { resultLabel } from './record.js';
@@ -418,17 +420,25 @@ import { movesHTML } from './moves-view.js';
   };
   // scanned books (ui/scan-dialog.js); page processing is plugged in by scan/process.js
   var scanDialog = createScanDialog({ processPage: processScanPage, onResults: onScanResults });
-  // stage B: valid positions go straight into the "<file> (скан)" book (stage D adds a review screen)
+  // stage D: found diagrams go to the review screen; confirmed ones are added to «<file> (скан)»
   setScanResultsHandler(function (state, file, modal) {
-    var name = scanBookName(file.name), now = Date.now();
-    var r = ensureBook(S.books, name, function () { return uid('b'); }, now);
-    var res = mergeScanItems(r.book, scanItemsFrom(state.results, name));
-    Store.put(JSON.parse(JSON.stringify(r.book)));
-    var invalid = state.results.filter(function (x) { return !x.valid; }).length;
     if (modal) modal.close();
-    S.book = r.book; S.filter = 'all'; renderAll();
-    toast('В книгу «' + name + '» добавлено позиций: ' + res.added + (res.updated ? ', обновлено: ' + res.updated : '') +
-      ' (помечены «не проверено»)' + (invalid ? '. С ошибками и не сохранены: ' + invalid : '') + '.');
+    var name = scanBookName(file.name), prof = profileName(file), fp = state.fingerprint, touched = false;
+    openScanReview({
+      state: state, profile: prof,
+      save: function (st) { return saveJob(st); },
+      getImages: function (id) { return getImages(fp, id); },
+      addToBook: function (results) {
+        var r = ensureBook(S.books, name, function () { return uid('b'); }, Date.now());
+        var res = mergeScanItems(r.book, scanItemsFrom(results, name));
+        Store.put(JSON.parse(JSON.stringify(r.book)));
+        touched = r.book;
+        return { added: res.added, updated: res.updated, name: name };
+      },
+      learn: function (boardUrl, cells) { return learnBoard(prof, boardUrl, cells); },
+      again: function (result, boardUrl) { return recognizeAgain(result, boardUrl, prof); },
+      onClose: function () { if (touched) { S.book = touched; S.filter = 'all'; } renderAll(); }
+    });
   });
   var openProgress = createProgressDialog(dialogCtx).openProgress;
   var dataDialog = createDataDialog(dialogCtx), openData = dataDialog.openData;

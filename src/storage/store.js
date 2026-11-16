@@ -17,6 +17,8 @@ export function createStore(deps) {
   var idb = deps.indexedDB !== undefined ? deps.indexedDB : (typeof indexedDB !== 'undefined' ? indexedDB : null);
   var storage = deps.storage !== undefined ? deps.storage : (typeof navigator !== 'undefined' && navigator.storage ? navigator.storage : null);
   var dbName = deps.dbName || 'shakhmatnaya-tetrad';
+  // noCache: do not keep a copy of every record in memory while IndexedDB works (large scan data)
+  var noCache = !!deps.noCache;
   var db = null, mem = {}, useMem = false, timers = {}, onError = null;
 
   function fail(op, e) {
@@ -71,7 +73,7 @@ export function createStore(deps) {
     });
   }
   // Resolve to true on success, false on failure (onError has been called).
-  function put(b) { mem[b.id] = b; return write('save', function (os) { os.put(b); }); }
+  function put(b) { if (!noCache || useMem || !db) mem[b.id] = b; return write('save', function (os) { os.put(b); }); }
   function del(id) { delete mem[id]; return write('delete', function (os) { os.delete(id); }); }
   function save(b) {
     clearTimeout(timers[b.id]);

@@ -6,8 +6,10 @@ export function isDjvuName(name) { return /\.(djvu|djv)$/i.test(name || ''); }
 export function isPdfName(name) { return /\.pdf$/i.test(name || ''); }
 
 // Stable id of a file for "continue where we stopped" (the File object itself cannot be stored).
+// name + size: the same book opened again (also re-downloaded or copied, which changes the
+// file date) continues its scan and review
 export function fileFingerprint(file) {
-  return [file.name, file.size, file.lastModified || 0].join('|');
+  return [file.name, file.size].join('|');
 }
 
 function grayFromCanvas(cv) {
