@@ -149,3 +149,13 @@ describe('hatch spacing picks the density window', async () => {
     expect(hatchGap([new Uint8Array(S * S).fill(255)])).toBe(0); // no hatching measured
   });
 });
+
+describe('frame of a rotated scan whose thin lines break into pieces on neighbouring rows', () => {
+  it('the pieces are joined into one line', () => {
+    const g = page(900, 900);
+    // top and bottom lines: three overlapping pieces on rows y, y+1, y+2
+    for (const y of [100, 449]) { rect(g, 100, y, 200, 1); rect(g, 200, y + 1, 250, 1); rect(g, 240, y + 2, 211, 1); }
+    rect(g, 100, 100, 2, 352); rect(g, 449, 100, 2, 352);
+    expect(findBoards(g).length).toBe(1);
+  });
+});

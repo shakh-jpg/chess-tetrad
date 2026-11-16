@@ -71,6 +71,17 @@ export function findBoards(g, opts) {
     var e = edges.filter(function (e) { return r.y - e.y1 <= 2 && Math.abs(r.x0 - e.x0) <= 4 && Math.abs(r.x1 - e.x1) <= 4; })[0];
     if (e) { e.y1 = r.y; e.x0 = Math.min(e.x0, r.x0); e.x1 = Math.max(e.x1, r.x1); } else edges.push({ y0: r.y, y1: r.y, x0: r.x0, x1: r.x1 });
   });
+  // a thin line of a slightly rotated scan breaks into overlapping pieces on 2-3 neighbouring
+  // rows (119-316, 216-461, 248-461): their union is the line. Added as extra edges.
+  var merged = [];
+  runs.forEach(function (r) {
+    var e = merged.filter(function (e) { return r.y - e.y1 <= 2 && r.y - e.y0 <= 4 && r.x0 <= e.x1 && r.x1 >= e.x0; })[0];
+    if (e) { e.y1 = r.y; e.x0 = Math.min(e.x0, r.x0); e.x1 = Math.max(e.x1, r.x1); e.n++; } else merged.push({ y0: r.y, y1: r.y, x0: r.x0, x1: r.x1, n: 1 });
+  });
+  merged.forEach(function (m) {
+    if (m.n > 1 && !edges.some(function (e) { return e.y0 === m.y0 && e.x0 === m.x0 && e.x1 === m.x1; })) edges.push({ y0: m.y0, y1: m.y1, x0: m.x0, x1: m.x1 });
+  });
+  edges.sort(function (a, b) { return a.y0 - b.y0; });
   /** @type {Board[]} */ var boards = [];
   for (var i = 0; i < edges.length; i++) {
     var top = edges[i], w = top.x1 - top.x0 + 1;
