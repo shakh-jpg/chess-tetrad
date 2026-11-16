@@ -128,7 +128,7 @@ export function summarize(data, now) {
   var prog = {};
   (data.progress || []).forEach(function (p) { prog[p.student_id + '|' + p.item_id] = p; });
   return (data.students || []).map(function (s) {
-    var r = { id: s.id, nick: s.nick, joined: !!s.bound_at, lastSeen: s.last_seen_at ? Date.parse(s.last_seen_at) : 0,
+    var r = { id: s.id, nick: s.nick, joined: !!s.bound_at, hasPassword: !!s.has_password, lastSeen: s.last_seen_at ? Date.parse(s.last_seen_at) : 0,
       sets: 0, total: 0, solved: 0, clean: 0, failed: 0, due: 0, untouched: 0 };
     (data.assignments || []).forEach(function (a) {
       if (a.student_id !== s.id) return;

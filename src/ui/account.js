@@ -5,7 +5,7 @@ import { loadClient } from '../sync/client.js';
 import { createApi } from '../sync/api.js';
 import { createQueue, localStorageBackend } from '../sync/queue.js';
 import { createSync } from '../sync/sync.js';
-import { normalizeCode, errorText } from '../sync/code.js';
+import { normalizeCode, errorText, checkLogin } from '../sync/code.js';
 import { setFromBook, summarize, isRemoteBook } from '../sync/model.js';
 import { countLabel } from './plural.js';
 
@@ -69,9 +69,16 @@ export function initAccount(ctx) {
   function renderSignedOut(m, body) {
     body.innerHTML =
       '<div class="acc-grid">' +
-      '<section class="acc-card"><h4>Я ученик</h4><p class="hint-note">Введите код, который дал тренер. Почта не нужна.</p>' +
+      '<section class="acc-card"><h4>Я ученик</h4>' +
+      '<div class="seg acc-tabs" role="tablist"><button class="btn on" id="acc-tab-code" role="tab">По коду</button><button class="btn" id="acc-tab-pass" role="tab">По логину и паролю</button></div>' +
+      '<div id="acc-by-code"><p class="hint-note">Введите код, который дал тренер. Почта не нужна.</p>' +
       '<label class="fld">Код<input id="acc-code" type="text" class="mono" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD-EFGH-JKMN" maxlength="20"></label>' +
-      '<button class="btn primary" id="acc-join">Войти по коду</button><p id="acc-join-st" class="status"></p></section>' +
+      '<button class="btn primary" id="acc-join">Войти по коду</button><p id="acc-join-st" class="status"></p></div>' +
+      '<div id="acc-by-pass" hidden><p class="hint-note">Если вы уже придумали логин и пароль.</p>' +
+      '<label class="fld">Логин<input id="acc-login" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="30"></label>' +
+      '<label class="fld">Пароль<input id="acc-lpass" type="password" autocomplete="current-password" maxlength="72"></label>' +
+      '<button class="btn primary" id="acc-login-go">Войти</button><p id="acc-login-st" class="status"></p>' +
+      '<p class="hint-note">Забыли пароль? Попросите у тренера новый код, войдите по нему и придумайте новый пароль.</p></div></section>' +
       '<section class="acc-card"><h4>Я тренер</h4>' +
       '<label class="fld">Почта<input id="acc-email" type="email" autocomplete="username"></label>' +
       '<label class="fld">Пароль<input id="acc-pass" type="password" autocomplete="current-password"></label>' +
@@ -79,6 +86,25 @@ export function initAccount(ctx) {
       '<p id="acc-coach-st" class="status"></p></section></div>' +
       '<p class="hint-note">В облаке хранятся только ник ученика, назначенные наборы (позиции и ходы) и прогресс. Книги и PDF остаются на устройстве тренера.</p>';
     var codeIn = body.querySelector('#acc-code'), jst = body.querySelector('#acc-join-st');
+    function tab(pass) {
+      body.querySelector('#acc-by-code').hidden = pass; body.querySelector('#acc-by-pass').hidden = !pass;
+      body.querySelector('#acc-tab-code').classList.toggle('on', !pass); body.querySelector('#acc-tab-pass').classList.toggle('on', pass);
+    }
+    body.querySelector('#acc-tab-code').addEventListener('click', function () { tab(false); });
+    body.querySelector('#acc-tab-pass').addEventListener('click', function () { tab(true); });
+    body.querySelector('#acc-login-go').addEventListener('click', async function () {
+      var lst = body.querySelector('#acc-login-st'), login = body.querySelector('#acc-login').value, pass = body.querySelector('#acc-lpass').value;
+      if (!login.trim() || !pass) { status(lst, 'bad', 'Введите логин и пароль.'); return; }
+      status(lst, '', 'Вхожу…');
+      try {
+        var r = await api.studentLogin(login, pass);
+        if (!r || !r.ok) { status(lst, 'bad', errorText(r && r.error, r && r.message)); return; }
+        ctx.lsSet('st.cloud', true);
+        await sync.syncNow();
+        ctx.toast('Здравствуйте, ' + r.nick + '! Ваши наборы и прогресс загружены.');
+        renderStudent(m, body);
+      } catch (e) { status(lst, 'bad', errMsg(e)); }
+    });
     codeIn.addEventListener('input', function () { var c = normalizeCode(codeIn.value); if (c.valid) status(jst, 'good', 'Код похож на верный: ' + c.code); else status(jst, '', ''); });
     body.querySelector('#acc-join').addEventListener('click', async function () {
       status(jst, '', 'Проверяю код…');
@@ -88,7 +114,7 @@ export function initAccount(ctx) {
         ctx.lsSet('st.cloud', true);
         await sync.syncNow();
         ctx.toast('Готово: ' + r.nick + ', задания тренера загружены.');
-        renderStudent(m, body);
+        renderSetLogin(m, body, true);
       } catch (e) { status(jst, 'bad', errMsg(e)); }
     });
     var est = body.querySelector('#acc-coach-st');
@@ -129,10 +155,45 @@ export function initAccount(ctx) {
     body.innerHTML = '<p class="status good">Вы ученик: <b>' + esc(p.nick || '') + '</b>' + (p.coach_name ? ' · тренер: ' + esc(p.coach_name) : '') + '.</p>' +
       '<p class="hint-note">Наборов от тренера: ' + remote.length + '. Последняя синхронизация: ' + (sync.state.lastSync ? new Date(sync.state.lastSync).toLocaleTimeString('ru-RU') : '—') + '.</p>' +
       '<button class="btn primary" id="acc-sync">Синхронизировать сейчас</button><p id="acc-sync-st" class="status"></p>' +
-      '<p class="hint-note">Решайте задачи и без интернета — прогресс отправится тренеру, когда связь появится. Сменили телефон? Попросите у тренера новый код и введите его на новом телефоне: прогресс перенесётся.</p>';
+      '<p class="hint-note" id="acc-my-login">Логин: …</p><button class="btn" id="acc-set-pass">Сменить пароль</button>' +
+      '<p class="hint-note">Решайте задачи и без интернета — прогресс отправится тренеру, когда связь появится. Другой телефон или компьютер? Войдите там по логину и паролю: прогресс будет тот же.</p>';
+    api.myStudentLogin().then(function (l) {
+      var el = body.querySelector('#acc-my-login'), b = body.querySelector('#acc-set-pass');
+      if (!el) return;
+      el.textContent = l ? 'Ваш логин: ' + l + '. Пароль знаете только вы.' : 'Логина и пароля пока нет: войти на другом устройстве можно только по новому коду тренера.';
+      b.textContent = l ? 'Сменить пароль' : 'Придумать логин и пароль';
+    });
+    body.querySelector('#acc-set-pass').addEventListener('click', function () { renderSetLogin(m, body, false); });
     body.querySelector('#acc-sync').addEventListener('click', async function () {
       var st = body.querySelector('#acc-sync-st'); status(st, '', 'Синхронизирую…');
       try { await sync.syncNow(); status(st, 'good', 'Готово.'); ctx.renderAll(); } catch (e) { status(st, 'bad', errMsg(e)); }
+    });
+  }
+
+  // "Придумайте логин и пароль": right after joining by code, or later from the account
+  function renderSetLogin(m, body, first) {
+    body.innerHTML = '<section class="acc-card acc-setlogin"><h4>Придумайте логин и пароль</h4>' +
+      '<p class="hint-note">С ними вы войдёте на любом телефоне или компьютере и увидите свои задачи. Почта не нужна. Пароль никому не говорите — даже тренеру.</p>' +
+      '<label class="fld">Логин (латинские буквы и цифры, 3–30)<input id="acc-new-login" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="30" placeholder="Например: arman2014"></label>' +
+      '<label class="fld">Пароль (не короче 8 знаков)<input id="acc-new-pass" type="password" autocomplete="new-password" maxlength="72"></label>' +
+      '<label class="fld">Пароль ещё раз<input id="acc-new-pass2" type="password" autocomplete="new-password" maxlength="72"></label>' +
+      '<div class="seg wrap"><button class="btn primary" id="acc-save-login">Сохранить</button><button class="btn" id="acc-skip-login">' + (first ? 'Пропустить' : 'Отмена') + '</button></div>' +
+      '<p id="acc-setlogin-st" class="status"></p>' +
+      (first ? '<p class="hint-note">Если пропустить: на другом устройстве войти можно будет только по новому коду от тренера. Придумать логин можно и позже: «Аккаунт → Придумать логин и пароль».</p>' : '') + '</section>';
+    api.myStudentLogin().then(function (l) { var i = body.querySelector('#acc-new-login'); if (l && i && !i.value) i.value = l; });
+    var st = body.querySelector('#acc-setlogin-st');
+    body.querySelector('#acc-skip-login').addEventListener('click', function () { renderStudent(m, body); });
+    body.querySelector('#acc-save-login').addEventListener('click', async function () {
+      var login = body.querySelector('#acc-new-login').value, p1 = body.querySelector('#acc-new-pass').value, p2 = body.querySelector('#acc-new-pass2').value;
+      var bad = checkLogin(login, p1, p2);
+      if (bad) { status(st, 'bad', errorText(bad)); return; }
+      status(st, '', 'Сохраняю…');
+      try {
+        var r = await api.setStudentLogin(login, p1);
+        if (!r || !r.ok) { status(st, 'bad', errorText(r && r.error)); return; }
+        ctx.toast('Готово! Ваш логин: ' + r.login + '. Запомните пароль.');
+        renderStudent(m, body);
+      } catch (e) { status(st, 'bad', /set_student_login/.test(String(e && e.message)) ? 'Вход по паролю ещё не включён в облаке. Скажите тренеру.' : errMsg(e)); }
     });
   }
 
@@ -147,7 +208,7 @@ export function initAccount(ctx) {
       '<div id="acc-panel"></div>' +
       '<h4>Ученики</h4>' + (sum.length ? '<div class="acc-list">' + sum.map(function (s) {
         return '<div class="acc-row" data-sid="' + esc(s.id) + '"><div class="acc-who"><b>' + esc(s.nick) + '</b><span class="hint-note">' +
-          (s.joined ? 'вошёл · был ' + fmtDate(s.lastSeen) : 'ещё не ввёл код') + '</span></div>' +
+          (s.joined ? 'вошёл · был ' + fmtDate(s.lastSeen) : 'ещё не ввёл код') + (s.hasPassword ? ' · есть пароль' : '') + '</span></div>' +
           '<div class="acc-stats">' + (s.total ? 'решено ' + s.solved + ' из ' + s.total + (s.failed ? ' · не решено ' + s.failed : '') + (s.due ? ' · <b class="due">пора повторить ' + s.due + '</b>' : '') : 'наборов нет') + '</div>' +
           '<div class="acc-act"><button class="btn" data-code="' + esc(s.id) + '">Новый код</button><button class="btn" data-del="' + esc(s.id) + '">Удалить</button></div></div>';
       }).join('') + '</div>' : '<p class="empty-note">Учеников пока нет.</p>') +

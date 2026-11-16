@@ -330,3 +330,6 @@ svg.bd.shake { animation: shake .3s; }
 }
 .sr-moves { color: var(--ink); font-size: 14px; line-height: 1.6; }
 .sr-moves mark { background: color-mix(in srgb, var(--warn) 30%, transparent); color: inherit; border-radius: 3px; padding: 0 2px; }
+.acc-tabs { gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+.acc-tabs .btn.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.acc-setlogin input, #acc-by-pass input { font-size: 16px; } /* no zoom on phones */

@@ -32,7 +32,10 @@ export function createApi(client, opts) {
     signOut: async function () { return unwrap(await client.auth.signOut()); },
 
     listStudents: async function () {
-      return unwrap(await client.from('students').select('id, nick, bound_at, last_seen_at, created_at').order('created_at'));
+      // has_password comes with the 20261116 migration; before it is run, list without it
+      var r = await client.from('students').select('id, nick, bound_at, last_seen_at, created_at, has_password').order('created_at');
+      if (r.error && /has_password/.test(r.error.message || '')) r = await client.from('students').select('id, nick, bound_at, last_seen_at, created_at').order('created_at');
+      return unwrap(r);
     },
     createStudent: function (nick) { return rpc('create_student', { p_nick: nick }); },
     reissueInvite: function (studentId) { return rpc('reissue_invite', { p_student_id: studentId }); },
@@ -49,12 +52,14 @@ export function createApi(client, opts) {
     },
     coachOverview: async function () {
       var r = await Promise.all([
-        client.from('students').select('id, nick, bound_at, last_seen_at, created_at').order('created_at'),
+        client.from('students').select('id, nick, bound_at, last_seen_at, created_at, has_password').order('created_at'),
         client.from('sets').select('id, title, source, created_at').order('created_at'),
         client.from('assignments').select('set_id, student_id, assigned_at'),
         client.from('set_items').select('id, set_id'),
         client.from('progress').select('student_id, item_id, n, res, due_at, last_at')
       ]);
+      // before the 20261116 migration there is no has_password column
+      if (r[0].error && /has_password/.test(r[0].error.message || '')) r[0] = await client.from('students').select('id, nick, bound_at, last_seen_at, created_at').order('created_at');
       return { students: unwrap(r[0]), sets: unwrap(r[1]), assignments: unwrap(r[2]), items: unwrap(r[3]), progress: unwrap(r[4]) };
     },
 
@@ -69,6 +74,16 @@ export function createApi(client, opts) {
       }
       return rpc('redeem_invite_code', { p_code: c.code });
     },
+    // Login + password (no e-mail): a new anonymous session takes over the student. Same answer as studentJoin.
+    studentLogin: async function (login, pass) {
+      if (!(await session())) {
+        var a = await client.auth.signInAnonymously();
+        if (a && a.error) return { ok: false, error: 'anon_failed', message: a.error.message };
+      }
+      return rpc('student_login', { p_login: String(login || '').trim(), p_password: pass });
+    },
+    setStudentLogin: function (login, pass) { return rpc('set_student_login', { p_login: String(login || '').trim(), p_password: pass }); },
+    myStudentLogin: async function () { try { return await rpc('my_student_login', {}); } catch (e) { return null; } },
     fetchAssigned: async function () {
       var r = await Promise.all([
         client.from('sets').select('id, title, source, created_at, set_items(id, position, kind, title, start_fen, movetext)'),

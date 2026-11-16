@@ -26,8 +26,24 @@ var ERRORS = {
   not_a_coach: 'Сначала войдите как тренер.',
   bad_nick: 'Ник должен быть от 1 до 40 символов.',
   too_many_students: 'Слишком много учеников.',
-  not_found: 'Ученик не найден.'
+  not_found: 'Ученик не найден.',
+  // login and password of a student
+  bad_login: 'Логин: только латинские буквы и цифры, от 3 до 30 знаков.',
+  bad_password: 'Пароль должен быть не короче 8 знаков.',
+  login_taken: 'Такой логин уже занят. Придумайте другой.',
+  invalid_login: 'Логин или пароль не подошли. Проверьте и попробуйте ещё раз.',
+  not_student: 'Сначала войдите по коду тренера.',
+  password_mismatch: 'Пароли не совпадают.',
+  no_session: 'Не удалось подключиться к облаку. Проверьте интернет.'
 };
+
+/** Checks a login and a password before sending them: error code or ''. */
+export function checkLogin(login, pass, pass2) {
+  if (!/^[a-zA-Z0-9]{3,30}$/.test(String(login || '').trim())) return 'bad_login';
+  if (String(pass || '').length < 8 || String(pass).length > 72) return 'bad_password';
+  if (pass2 !== undefined && pass !== pass2) return 'password_mismatch';
+  return '';
+}
 export function errorText(code, fallback) {
   return ERRORS[code] || fallback || 'Ошибка: ' + (code || 'неизвестная');
 }
