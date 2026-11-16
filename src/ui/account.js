@@ -198,8 +198,13 @@ export function initAccount(ctx) {
     if (!book || isRemoteBook(book)) { panel.innerHTML = '<p class="status warn">Откройте в библиотеке свою книгу, из которой нужно взять задачи.</p>'; return; }
     panel.innerHTML = '<div class="acc-card"><h4>Набор из книги «' + esc(book.name) + '»</h4>' +
       '<label class="fld">Название набора<input id="as-title" type="text" maxlength="120" value="' + esc(book.name) + '"></label>' +
+      '<div class="acc-pick-bar">' +
+        '<div class="seg wrap"><button class="btn" id="as-all">Выбрать все</button><button class="btn" id="as-puz">Только задачи</button><button class="btn" id="as-none">Снять все</button></div>' +
+        '<div class="acc-range">С № <input id="as-from" type="number" min="1" max="' + book.items.length + '" value="1" inputmode="numeric"> по № <input id="as-to" type="number" min="1" max="' + book.items.length + '" value="' + Math.min(50, book.items.length) + '" inputmode="numeric"> <button class="btn" id="as-range">Отметить</button></div>' +
+        '<p class="hint-note" id="as-count">Выбрано: 0 из ' + book.items.length + '</p>' +
+      '</div>' +
       '<div class="acc-pick">' + book.items.map(function (it, i) {
-        return '<label class="chk"><input type="checkbox" data-i="' + i + '"' + (it.type === 'puzzle' ? ' checked' : '') + '> ' + esc(it.title) + '</label>';
+        return '<label class="chk"><input type="checkbox" data-i="' + i + '"> <span class="acc-num">' + (i + 1) + '.</span> ' + esc(it.title) + '</label>';
       }).join('') + '</div>' +
       '<p class="hint-note">Кому:</p><div class="seg wrap">' + data.students.map(function (s) {
         return '<label class="chk"><input type="checkbox" data-s="' + esc(s.id) + '" checked> ' + esc(s.nick) + '</label>';
@@ -207,6 +212,25 @@ export function initAccount(ctx) {
       '<label class="chk"><input type="checkbox" id="as-cm"> Отправить мои комментарии к ходам</label>' +
       '<p class="hint-note">Отправляются позиции, ходы и варианты. Комментарии — только если это ваш собственный текст, не текст книги. Источник («' + esc(book.name) + '») подставится сам.</p>' +
       '<button class="btn primary" id="as-go">Назначить</button><p id="as-st" class="status"></p></div>';
+    var boxes = Array.prototype.slice.call(panel.querySelectorAll('[data-i]'));
+    function recount() {
+      var n = boxes.filter(function (c) { return c.checked; }).length;
+      panel.querySelector('#as-count').textContent = 'Выбрано: ' + n + ' из ' + boxes.length;
+    }
+    function mark(pred) { boxes.forEach(function (c, i) { c.checked = pred(i); }); recount(); }
+    panel.querySelector('.acc-pick').addEventListener('change', recount);
+    panel.querySelector('#as-all').addEventListener('click', function () { mark(function () { return true; }); });
+    panel.querySelector('#as-puz').addEventListener('click', function () { mark(function (i) { return book.items[i].type === 'puzzle'; }); });
+    panel.querySelector('#as-none').addEventListener('click', function () { mark(function () { return false; }); });
+    panel.querySelector('#as-range').addEventListener('click', function () {
+      var a = parseInt(panel.querySelector('#as-from').value, 10), b = parseInt(panel.querySelector('#as-to').value, 10);
+      if (!(a >= 1) || !(b >= 1)) { status(panel.querySelector('#as-st'), 'bad', 'Введите номера, например с 1 по 50.'); return; }
+      if (a > b) { var t = a; a = b; b = t; }
+      // adds the range to what is already selected (so several ranges can be combined; «Снять все» resets)
+      boxes.forEach(function (c, i) { if (i + 1 >= a && i + 1 <= b) c.checked = true; });
+      recount();
+      status(panel.querySelector('#as-st'), '', '');
+    });
     panel.querySelector('#as-go').addEventListener('click', async function () {
       var st = panel.querySelector('#as-st');
       var items = Array.prototype.filter.call(panel.querySelectorAll('[data-i]'), function (c) { return c.checked; }).map(function (c) { return book.items[+c.getAttribute('data-i')]; });
