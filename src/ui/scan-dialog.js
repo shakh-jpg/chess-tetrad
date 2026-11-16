@@ -39,7 +39,7 @@ export function createScanDialog(ctx) {
           (state.results.length ? ' <button class="btn" id="sc-review">Проверить найденное</button>' : '') + '</p>' : '') +
         '<div class="row2"><label class="fld">С страницы<input id="sc-from" type="number" min="1" max="' + source.pages + '" value="1"></label>' +
         '<label class="fld">По страницу<input id="sc-to" type="number" min="1" max="' + source.pages + '" value="' + source.pages + '"></label></div>' +
-        '<label class="chk"><input type="checkbox" id="sc-ocr"' + (state.ocr === false ? '' : ' checked') + '> Читать текст: номера диаграмм и ходы после них (медленнее; в первый раз загрузит около 10 МБ)</label>' +
+        '<label class="chk"><input type="checkbox" id="sc-ocr"' + (state.ocr === true ? ' checked' : '') + '> Читать текст: номера диаграмм и ходы после них (медленнее; в первый раз загрузит около 10 МБ)</label>' +
         '<div class="modal-act">' + (done ? '<button class="btn" id="sc-reset">Начать заново</button>' : '') +
         '<button class="btn" data-close>Закрыть</button><button class="btn primary" id="sc-go">' + (done ? 'Продолжить' : 'Начать') + '</button></div>';
       body.querySelector('[data-close]').addEventListener('click', m.close);
@@ -64,7 +64,7 @@ export function createScanDialog(ctx) {
       var fill = body.querySelector('#sc-fill'), txt = body.querySelector('#sc-txt');
       job = createScanJob({
         source: source, state: state, dpi: SCAN_DPI,
-        processPage: async function (img, page) { return stashImages(fp, ctx.processPage ? await ctx.processPage(img, page, file, { ocr: state.ocr !== false }) : []); },
+        processPage: async function (img, page) { return stashImages(fp, ctx.processPage ? await ctx.processPage(img, page, file, { ocr: state.ocr === true }) : []); },
         save: function (st) { return saveJob(st); }
       });
       body.querySelector('#sc-stop').addEventListener('click', function () { job.cancel(); txt.textContent = 'Останавливаю после текущей страницы…'; });
