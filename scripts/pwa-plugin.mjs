@@ -11,6 +11,9 @@ export function selectPrecache(files) {
     if (f === 'sw.js' || f.endsWith('.map') || f.endsWith('.txt')) return false;
     // pdf.js image decoders are needed only for scanned PDFs (coach's tool): cached on first use.
     if (f.indexOf('pdfjs/wasm/') === 0) return false;
+    // OCR for scanned books (~17 MB): cached when first used, not in the first download
+    if (f.indexOf('ocr/') === 0) return false;
+    if (/^assets\/tesseract[^/]*\.js$/.test(f)) return false;
     // DjVu decoder (scanned books, coach's tool): cached on first use as well.
     if (/^assets\/djvu_rs_bg-[^/]*\.wasm$/.test(f)) return false;
     if (/\.woff$/.test(f)) return false;

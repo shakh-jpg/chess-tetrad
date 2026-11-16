@@ -106,7 +106,7 @@ describe('scan store (separate database, images apart from the job)', async () =
     expect(results[0]).toEqual({ id: '3:0', fen: 'x' });
     await S.saveJob({ fingerprint: 'fp1', pages: 5, done: [3], results });
     expect(await S.loadJob('fp1')).toEqual({ fingerprint: 'fp1', pages: 5, done: [3], results: [{ id: '3:0', fen: 'x' }] });
-    expect(await S.getImages('fp1', '3:0')).toEqual({ view: 'data:image/jpeg;base64,AA', board: 'data:image/png;base64,BB' });
+    expect(await S.getImages('fp1', '3:0')).toEqual({ view: 'data:image/jpeg;base64,AA', board: 'data:image/png;base64,BB', text: '' });
     expect(await S.getImages('fp1', '9:9')).toBe(null);
     expect(await S.loadJob('other')).toBe(null);
   });

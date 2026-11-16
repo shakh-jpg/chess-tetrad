@@ -4,6 +4,7 @@
 import { $, esc } from './util.js';
 import { openModal, toast } from './dialogs.js';
 import { loadJob, saveJob, stashImages } from '../scan/scan-store.js';
+import { ocrClose } from '../scan/ocr.js';
 import { openScanSource, fileFingerprint } from '../scan/source.js';
 import { createScanJob, newScanState, pendingPages } from '../scan/scan-job.js';
 import { countLabel } from './plural.js';
@@ -15,7 +16,7 @@ export function createScanDialog(ctx) {
   async function open(file) {
     var m = openModal('<h3>Распознать скан</h3><div id="sc-body"><p class="hint-note">Открываю «' + esc(file.name) + '»…</p></div>', 'wide');
     var body = $('#sc-body', m.el), source = null, job = null;
-    m.onclose = function () { if (job) job.cancel(); if (source) source.close(); };
+    m.onclose = function () { if (job) job.cancel(); if (source) source.close(); ocrClose(); };
     try { source = await openScanSource(file); }
     catch (e) {
       body.innerHTML = '<p class="status bad">' + esc(e.message || String(e)) + '</p><div class="modal-act"><button class="btn" data-close>Закрыть</button></div>';
@@ -38,6 +39,7 @@ export function createScanDialog(ctx) {
           (state.results.length ? ' <button class="btn" id="sc-review">Проверить найденное</button>' : '') + '</p>' : '') +
         '<div class="row2"><label class="fld">С страницы<input id="sc-from" type="number" min="1" max="' + source.pages + '" value="1"></label>' +
         '<label class="fld">По страницу<input id="sc-to" type="number" min="1" max="' + source.pages + '" value="' + source.pages + '"></label></div>' +
+        '<label class="chk"><input type="checkbox" id="sc-ocr"' + (state.ocr === false ? '' : ' checked') + '> Читать текст: номера диаграмм и ходы после них (медленнее; в первый раз загрузит около 10 МБ)</label>' +
         '<div class="modal-act">' + (done ? '<button class="btn" id="sc-reset">Начать заново</button>' : '') +
         '<button class="btn" data-close>Закрыть</button><button class="btn primary" id="sc-go">' + (done ? 'Продолжить' : 'Начать') + '</button></div>';
       body.querySelector('[data-close]').addEventListener('click', m.close);
@@ -50,6 +52,7 @@ export function createScanDialog(ctx) {
       body.querySelector('#sc-go').addEventListener('click', function () {
         var from = Math.max(1, Math.min(source.pages, parseInt(body.querySelector('#sc-from').value, 10) || 1));
         var to = Math.max(from, Math.min(source.pages, parseInt(body.querySelector('#sc-to').value, 10) || source.pages));
+        state.ocr = body.querySelector('#sc-ocr').checked;
         runRange(from - 1, to - 1);
       });
     }
@@ -61,7 +64,7 @@ export function createScanDialog(ctx) {
       var fill = body.querySelector('#sc-fill'), txt = body.querySelector('#sc-txt');
       job = createScanJob({
         source: source, state: state, dpi: SCAN_DPI,
-        processPage: async function (img, page) { return stashImages(fp, ctx.processPage ? await ctx.processPage(img, page, file) : []); },
+        processPage: async function (img, page) { return stashImages(fp, ctx.processPage ? await ctx.processPage(img, page, file, { ocr: state.ocr !== false }) : []); },
         save: function (st) { return saveJob(st); }
       });
       body.querySelector('#sc-stop').addEventListener('click', function () { job.cancel(); txt.textContent = 'Останавливаю после текущей страницы…'; });

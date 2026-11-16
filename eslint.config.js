@@ -4,7 +4,7 @@ import js from '@eslint/js';
 import globals from 'globals';
 
 export default [
-  { ignores: ['dist/**', 'node_modules/**', 'public/engine/**', 'public/pdfjs/**', 'src/core/chess.js', 'coverage/**', 'test-results/**', 'playwright-report/**'] },
+  { ignores: ['dist/**', 'node_modules/**', 'public/engine/**', 'public/pdfjs/**', 'public/ocr/**', 'src/core/chess.js', 'coverage/**', 'test-results/**', 'playwright-report/**'] },
   js.configs.recommended,
   {
     files: ['**/*.js', '**/*.mjs'],

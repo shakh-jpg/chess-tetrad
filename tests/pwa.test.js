@@ -11,9 +11,10 @@ describe('offline cache list', () => {
     'engine/stockfish-19-lite-single.js', 'engine/stockfish-19-lite-single.wasm', 'engine/COPYING-stockfish.txt',
     'assets/literata-latin-400-normal-x.woff2', 'assets/literata-cyrillic-400-italic-x.woff2',
     'assets/literata-latin-400-normal-x.woff', 'assets/literata-greek-400-normal-x.woff2',
-    'assets/ibm-plex-sans-latin-ext-400-normal-x.woff2', 'assets/noto-sans-symbols-2-symbols-400-normal-x.woff2'
+    'assets/ibm-plex-sans-latin-ext-400-normal-x.woff2', 'assets/noto-sans-symbols-2-symbols-400-normal-x.woff2',
+    'ocr/worker.min.js', 'ocr/tesseract-core-simd-lstm.wasm.js', 'ocr/lang/rus.traineddata.gz'
   ];
-  it('includes shell, engine and text fonts; skips sw.js, maps, licenses, woff and other scripts', () => {
+  it('includes shell, engine and text fonts; skips sw.js, maps, licenses, woff, OCR and other scripts', () => {
     expect(selectPrecache(files)).toEqual([
       'assets/index-a.js', 'assets/literata-cyrillic-400-italic-x.woff2', 'assets/literata-latin-400-normal-x.woff2',
       'assets/noto-sans-symbols-2-symbols-400-normal-x.woff2',

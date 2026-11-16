@@ -324,3 +324,5 @@ svg.bd.shake { animation: shake .3s; }
   .sr-img img { max-height: 24vh; min-height: 0; }
   .sr-act .btn { flex: 1 1 auto; }
 }
+.sr-moves { color: var(--ink); font-size: 14px; line-height: 1.6; }
+.sr-moves mark { background: color-mix(in srgb, var(--warn) 30%, transparent); color: inherit; border-radius: 3px; padding: 0 2px; }

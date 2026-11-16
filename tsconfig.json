@@ -31,6 +31,7 @@
     "src/scan/scan-job.js",
     "src/scan/djvu-split.js",
     "src/scan/review.js",
-    "src/scan/scan-store.js"
+    "src/scan/scan-store.js",
+    "src/scan/moves.js"
   ]
 }

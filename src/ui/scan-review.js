@@ -11,6 +11,8 @@ import {
   isConfident, reviewCounts, matchesFilter, cellsOf, editResult, nextChoice,
   confirmResult, skipResult, toLearn, LEARN_EVERY
 } from '../scan/review.js';
+import { toMovetext } from '../scan/moves.js';
+import { movesFor } from '../scan/process.js';
 
 var FILTERS = [['todo', 'Не проверенные'], ['bad', 'С ошибками'], ['done', 'Подтверждённые'], ['skipped', 'Пропущенные'], ['all', 'Все']];
 
@@ -57,6 +59,7 @@ export function openScanReview(o) {
       pal.map(function (p) { return '<button class="pal b" data-t="b' + p + '" aria-label="b' + p + '">' + pieceIcon('b' + p) + '</button>'; }).join('') + '</div></div></div>' +
       '<div class="sr-side"><div class="fld">Ход<div class="seg"><label><input type="radio" name="sr-turn" value="w"> Белых</label><label><input type="radio" name="sr-turn" value="b"> Чёрных</label></div></div>' +
       '<label class="chk"><input type="checkbox" id="sr-task"> Задание (в книге стоит «?»)</label>' +
+      '<div class="fld">Ходы из текста книги<div id="sr-moves" class="sr-moves"></div><button class="btn" id="sr-nomoves" hidden>Без ходов</button></div>' +
       '<div id="sr-status" class="status"></div><div id="sr-learn" class="hint-note"></div>' +
       '<button class="btn" id="sr-learn-now" hidden></button></div></div>' +
       '<div class="modal-act sr-act"><button class="btn" id="sr-prev" aria-label="Предыдущая">‹</button>' +
@@ -74,6 +77,7 @@ export function openScanReview(o) {
     $('#sr-ok', body).addEventListener('click', confirmCur);
     $('#sr-skip', body).addEventListener('click', skipCur);
     $('#sr-learn-now', body).addEventListener('click', function () { learnNow(true); });
+    $('#sr-nomoves', body).addEventListener('click', function () { var r = cur(); if (!r) return; r.moves = ''; r.movesList = []; r.noMoves = true; r.status = 'new'; renderMoves(r); renderCounts(); saveSoon(); });
     setTool(V.tool);
   }
   function setTool(t) { V.tool = t; $$('#sr-pal .pal', body).forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-t') === t); }); }
@@ -107,9 +111,21 @@ export function openScanReview(o) {
     $$('input[name=sr-turn]', body).forEach(function (x) { x.checked = x.value === r.side; });
     $('#sr-task', body).checked = !!r.task;
     var img = $('#sr-view', body); img.removeAttribute('src');
-    var want = r.id;
-    o.getImages(r.id).then(function (im) { var c = cur(); if (c && c.id === want && im) img.src = im.view; });
-    drawBoard(r); renderStatus(r);
+    var want = r.id; V.text = null;
+    o.getImages(r.id).then(function (im) { var c = cur(); if (c && c.id === want && im) { img.src = im.view; V.text = im.text || ''; renderMoves(r); } });
+    drawBoard(r); renderStatus(r); renderMoves(r);
+  }
+  // moves found in the page text; uncertain ones (read approximately) are highlighted
+  function renderMoves(r) {
+    var el = $('#sr-moves', body), list = r.movesList || [];
+    $('#sr-nomoves', body).hidden = !list.length;
+    if (!list.length) { el.textContent = V.text === '' ? 'Текст страницы не читался.' : r.noMoves ? 'Ходы убраны.' : 'Не найдены.'; return; }
+    var k = 0;
+    el.innerHTML = toMovetext(r.fen, list).split(' ').map(function (t) {
+      if (/^\d+\.+$/.test(t)) return esc(t);
+      var m = list[k++];
+      return m && !m.sure ? '<mark title="Прочитан неточно, сверьте с книгой">' + esc(t) + '</mark>' : esc(t);
+    }).join(' ');
   }
   function drawBoard(r) {
     var low = {}; (r.low || []).forEach(function (sq) { low[sq] = 1; });
@@ -139,7 +155,9 @@ export function openScanReview(o) {
     var side = ($$('input[name=sr-turn]', body).filter(function (x) { return x.checked; })[0] || { value: 'w' }).value;
     editResult(r, V.cells, side, $('#sr-task', body).checked);
     r.status = 'new'; // an edited diagram is confirmed again (that updates it in the book)
-    drawBoard(r); renderStatus(r); renderCounts(); saveSoon();
+    // the moves depend on the position: look for them in the page text again
+    if (V.text && !r.noMoves) { if (r.valid) Object.assign(r, movesFor(r.fen, V.text)); else { r.moves = ''; r.movesList = []; } }
+    drawBoard(r); renderStatus(r); renderMoves(r); renderCounts(); saveSoon();
   }
   function go(d) { if (!V.list.length) return; V.pos = (V.pos + d + V.list.length) % V.list.length; renderItem(); }
   // after confirm/skip: the next diagram. If the item left the filter, the next one is already at this place.

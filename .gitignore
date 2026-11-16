@@ -21,3 +21,4 @@ public/pdfjs/
 # Playwright output
 test-results/
 playwright-report/
+public/ocr/

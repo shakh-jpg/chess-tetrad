@@ -4,7 +4,7 @@
 
 /**
  * @typedef {{ id: string, page: number, index: number, fen: string, side: string, task: boolean,
- *   valid: boolean, number?: string, moves?: string, status?: string, checked?: boolean }} ScanResult
+ *   valid: boolean, number?: string, moves?: string, movesList?: { san: string, sure: boolean }[], status?: string, checked?: boolean }} ScanResult
  */
 
 /** @param {string} file @returns {string} */
@@ -30,7 +30,7 @@ export function scanItemsFrom(results, source) {
   return results.filter(function (r) { return r.valid && r.status !== 'skipped'; }).map(function (r) {
     return {
       id: 'scan-' + r.page + '-' + r.index, type: 'puzzle', title: scanTitle(r, source), startFen: r.fen,
-      text: r.moves || '', plies: 0, result: '', err: null, warn: 0,
+      text: r.moves || '', plies: (r.movesList || []).length, result: '', err: null, warn: 0,
       note: (r.status === 'confirmed' ? '' : 'Распознано автоматически, не проверено. ') + (r.task ? 'Задание. ' : '') + (r.side === 'b' ? 'Ход чёрных.' : 'Ход белых.'),
       unchecked: r.status !== 'confirmed',
       section: 'Стр. ' + (r.page + 1), srcPage: r.page + 1, num: r.index + 1,

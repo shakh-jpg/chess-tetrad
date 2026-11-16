@@ -6,6 +6,8 @@
 import { findBoards, readMarker } from './boards.js';
 import { recognizeBoard, recognizeSquares, grayToCanvas } from './recognize.js';
 import { altsFrom } from './review.js';
+import { bestRun, tokenize, toMovetext, diagramNumber } from './moves.js';
+import { ocrPage } from './ocr.js';
 import { Samples } from '../recognition/samples.js';
 
 /** Learned piece samples are kept per book (the file name without extension). */
@@ -40,14 +42,25 @@ export function recogFontReady() {
   return fontReady;
 }
 
-export async function processScanPage(img, page, file) {
+/** Moves for a position from the page text: the longest legal run (see scan/moves.js). */
+export function movesFor(fen, text) {
+  var run = bestRun(fen, tokenize(text || ''));
+  return { moves: run.moves.length ? toMovetext(fen, run.moves) : '', movesList: run.moves.map(function (m) { return { san: m.san, sure: m.sure }; }) };
+}
+
+/**
+ * @param opts { ocr: boolean } read the page text (diagram numbers and moves) with OCR
+ */
+export async function processScanPage(img, page, file, opts) {
   var boards = findBoards(img);
   if (boards.length) await recogFontReady();
   var samples = Samples.list(profileName(file));
+  var ocr = null;
+  if (boards.length && opts && opts.ocr) ocr = await ocrPage(img, boards);
   return boards.map(function (b, k) {
     var mk = readMarker(img, b);
     var rec = recognizeBoard(img, b, mk, samples.length ? samples : null);
-    return {
+    var r = {
       id: page + ':' + k, page: page, index: k,
       fen: rec.fen, side: rec.side, sideKnown: rec.sideKnown, task: rec.task,
       valid: rec.valid, problems: rec.problems, low: Object.keys(rec.low), conf: Math.round(rec.conf * 1000) / 1000,
@@ -56,6 +69,13 @@ export async function processScanPage(img, page, file) {
       board: dataUrl(img, b.inner, 384, 'image/png'),
       status: 'new'
     };
+    if (ocr) {
+      var num = diagramNumber(ocr.words, b.outer);
+      if (num) r.number = num;
+      r.text = ocr.text; // kept with the images (scan-store), so moves can be found again after the coach fixes the board
+      if (rec.valid) Object.assign(r, movesFor(rec.fen, ocr.text));
+    }
+    return r;
   });
 }
 
