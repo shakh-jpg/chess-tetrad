@@ -44,6 +44,12 @@ function columnDarkness(g, x, y0, y1, r) {
   }
   return n ? d / n : 0;
 }
+/** Best column darkness within ±6 px of x (a side of a slightly rotated frame). */
+function sideDarkness(g, x, y0, y1) {
+  var best = 0;
+  for (var k = -6; k <= 6; k++) { var xx = x + k; if (xx < 0 || xx >= g.width) continue; var d = columnDarkness(g, xx, y0, y1, 2); if (d > best) best = d; }
+  return best;
+}
 /** Share of dark pixels in a row segment. */
 function rowDarkness(g, y, x0, x1) {
   var d = 0; for (var x = x0; x <= x1; x++) if (dark(g, x, y)) d++;
@@ -79,7 +85,8 @@ export function findBoards(g, opts) {
       var dl = Math.abs(bot.x0 - top.x0), dr = Math.abs(bot.x1 - top.x1);
       if (!((dl <= tol && dr <= loose) || (dr <= tol && dl <= loose))) continue;
       var x0 = Math.min(top.x0, bot.x0), x1 = Math.max(top.x1, bot.x1);
-      if (columnDarkness(g, x0, top.y0, bot.y1, 2) < 0.85 || columnDarkness(g, x1, top.y0, bot.y1, 2) < 0.85) continue;
+      // the sides: best column near each end (scans are often slightly rotated, the line drifts by a few px)
+      if (sideDarkness(g, x0, top.y0, bot.y1) < 0.8 || sideDarkness(g, x1, top.y0, bot.y1) < 0.8) continue;
       var outer = { x: x0, y: top.y0, w: x1 - x0 + 1, h: bot.y1 - top.y0 + 1 };
       if (boards.some(function (b) { return overlap(b.outer, outer) > 0.5; })) continue;
       boards.push(refine(g, outer));

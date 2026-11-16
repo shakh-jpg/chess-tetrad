@@ -41,6 +41,13 @@ describe('board detection on a synthetic page', () => {
     expect(horizontalRuns(g, 180).some((r) => r.y === 60)).toBe(true);
     expect(findBoards(g).every((b) => b.outer.y !== 60)).toBe(true);
   });
+  it('finds a frame of a slightly rotated scan (the sides drift by a few pixels)', () => {
+    const h = page(800, 700);
+    // top and bottom lines, sides drifting by 3 px from top to bottom (about 0.6°)
+    rect(h, 100, 100, 300, 3); rect(h, 103, 397, 300, 3);
+    for (let y = 100; y < 400; y++) { const dx = Math.round((y - 100) / 100); rect(h, 100 + dx, y, 2, 1); rect(h, 398 + dx, y, 2, 1); }
+    expect(findBoards(h).length).toBe(1);
+  });
   it('accepts a frame whose top line is broken near a corner', () => {
     const h = page(800, 600);
     diagram(h, 100, 100, 300);
