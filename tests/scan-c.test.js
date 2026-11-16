@@ -1,7 +1,7 @@
 // Stage C: moves from OCR text, checked by the rules from the diagram position (synthetic text).
 import { describe, it, expect } from 'vitest';
 import { Chess } from '../src/core/chess.js';
-import { canonToken, matchMove, bestRun, tokenize, toMovetext, diagramNumber } from '../src/scan/moves.js';
+import { canonToken, matchMove, bestRun, readMoves, tokenize, toMovetext, diagramNumber } from '../src/scan/moves.js';
 
 describe('OCR token -> canonical spelling', () => {
   it('Russian, English, figurines, long and short, captures, castling', () => {
@@ -12,7 +12,7 @@ describe('OCR token -> canonical spelling', () => {
     expect(canonToken('Nxe5')).toEqual(['N:e5']);
     expect(canonToken('♘f3')).toEqual(['Nf3']);
     expect(canonToken('0—0—0')).toEqual(['O-O-O']);
-    expect(canonToken('с4')).toEqual(['c4']); // Cyrillic file letter is not a bishop
+    expect(canonToken('с4')).toEqual(['c4', '*c4']); // Cyrillic file letter is not a bishop; *c4 = a figurine lost by OCR
     expect(canonToken('Сb5')).toEqual(['Bb5']);
     expect(canonToken('ЛаЗ')).toEqual(['Ra3']); // Cyrillic а and З from OCR
     expect(canonToken('черные')).toEqual([]);
@@ -30,7 +30,7 @@ describe('the rules choose the move', () => {
     expect(matchMove(c, 'Лb7—b8+')).toEqual({ san: 'Rb8+', sure: true, d: 0 });
     expect(matchMove(c, 'Лb7-b8')).toMatchObject({ san: 'Rb8+', sure: true });
     expect(matchMove(c, 'Лb7—b9')).toBe(null); // no such square
-    expect(matchMove(c, '§b8')).toMatchObject({ san: 'Rb8+', sure: false }); // unreadable piece sign
+    expect(matchMove(c, '§b8')).toMatchObject({ san: 'Rb8+', sure: true, d: 0.5 }); // unreadable sign, only one move to b8
     expect(matchMove(c, 'Кре1')).toBe(null); // the king cannot go there… f1/f2/h1? e1 is not adjacent to g1
   });
   it('finds the run of moves that is legal from the diagram, among prose', () => {
@@ -66,5 +66,41 @@ describe('diagram number next to the board', () => {
     expect(diagramNumber([{ text: 'e4', x0: 150, y0: 110, x1: 170, y1: 125 }], o)).toBe(null);
     // rank coordinates next to the board are not diagram numbers
     expect(diagramNumber([{ text: '8', x0: 185, y0: 105, x1: 195, y1: 118 }, { text: '108', x0: 335, y0: 420, x1: 360, y1: 435 }], o)).toBe('108');
+  });
+});
+
+describe('figurines from an English OCR pass', () => {
+  // 1.157-like position, Black to move: king c6, pawns; White king e6
+  const fen = '8/p7/2k1K3/2p5/PpP5/1P6/8/8 b - - 0 1';
+  it('a digit in place of a figurine is "some piece"; the rules pick it', () => {
+    expect(canonToken('2b6')).toEqual(['*b6']);
+    const run = bestRun(fen, tokenize('1...2b6! 2.4 d5 a6! 3.2d6'));
+    expect(run.moves.map((m) => m.san)).toEqual(['Kb6', 'Kd5', 'a6', 'Kd6']);
+    expect(run.moves.every((m) => m.sure)).toBe(true); // a single legal move to each square
+  });
+});
+
+describe('stretches of moves for the second OCR pass', async () => {
+  const { moveSpans } = await import('../src/scan/moves.js');
+  const W = (text, x0, y0) => ({ text, x0, y0, x1: x0 + 10 * text.length, y1: y0 + 20 });
+  it('keeps runs of move-like words per line, drops prose', () => {
+    const words = [W('Потеря', 0, 0), W('пешки', 70, 0), W('кажется', 130, 0),
+      W('1...®', 0, 30), W('66!', 60, 30), W('2.Ф', 100, 30), W('d5', 140, 30), W('и', 170, 30), W('пешка', 190, 30), W('неуязвима', 260, 30),
+      W('3.46?!', 0, 60), W('\\е5,', 70, 60)];
+    const s = moveSpans(words);
+    expect(s.length).toBe(2);
+    expect(s[0]).toMatchObject({ x0: 0, y0: 30, x1: 160, n: 4 });
+    expect(s[1]).toMatchObject({ x0: 0, y0: 60, n: 2 });
+  });
+});
+
+describe('a game through the commentary (figurine book, English OCR pass)', () => {
+  // synthetic text in the style of the second OCR pass: figurines lost or read as digits
+  const fen = '2kr2r1/1p3p1p/p1n1bp2/q2Pp3/2B5/P1N5/P1PQ1PPP/3RK2R b K - 0 1';
+  const text = '16... 215? 16... 2xg2! 17. 2d3! 3 17... 2xd3 18. xd3 5d4 19. 0-0 b8 20. h1 xa3 21. f4';
+  it('reads on across comments, bridges ties, digits for figurines and files', () => {
+    const r = readMoves(fen, tokenize(text));
+    expect(r.moves.map((m) => m.san)).toEqual(['Bf5', 'Bd3', 'Bxd3', 'Qxd3', 'Nd4', 'O-O', 'Kb8', 'Kh1', 'Qxa3', 'f4']);
+    expect(r.moves[1].sure).toBe(false); // «2d3»: ♗d3 or ♕d3 — chosen by what follows, marked uncertain
   });
 });

@@ -3,8 +3,9 @@
 // when a scanned book is read with moves; the service worker caches the files on first use, so
 // it works offline afterwards. Runs in tesseract's own Web Worker.
 import { grayToCanvas } from './recognize.js';
+import { moveSpans } from './moves.js';
 
-var workerP = null;
+var workerP = null, movesP = null;
 
 function base() { return new URL((import.meta.env && import.meta.env.BASE_URL || './') + 'ocr/', location.href).href; }
 
@@ -28,11 +29,45 @@ export function ocrReady(onLog) {
   return workerP;
 }
 
-/** Stops the OCR worker (frees its memory). */
+// Second pass over the stretches with moves: English, only the characters of moves, one line at a
+// time. Figurines are not in Tesseract's alphabet: they come out as digits or vanish, and the
+// rules restore them (scan/moves.js); the squares, though, read much better than in the first pass.
+function movesReady() {
+  if (!movesP) {
+    movesP = (async function () {
+      var T = await import('tesseract.js');
+      var b = base();
+      var w = await T.createWorker('eng', T.OEM.LSTM_ONLY, { workerPath: b + 'worker.min.js', corePath: b, langPath: b + 'lang', gzip: true, workerBlobURL: false });
+      await w.setParameters({ tessedit_pageseg_mode: T.PSM.SINGLE_LINE, tessedit_char_whitelist: 'abcdefgh12345678.!?:+-x=KQRBNO0 ', user_defined_dpi: '400' });
+      return w;
+    })();
+    movesP.catch(function () { movesP = null; });
+  }
+  return movesP;
+}
+
+/** Stops the OCR workers (frees their memory). */
 export async function ocrClose() {
-  if (!workerP) return;
-  var p = workerP; workerP = null;
-  try { (await p).terminate(); } catch (e) { /* already gone */ }
+  var ps = [workerP, movesP]; workerP = movesP = null;
+  for (var i = 0; i < ps.length; i++) { if (ps[i]) { try { (await ps[i]).terminate(); } catch (e) { /* already gone */ } } }
+}
+
+/** Text of the move stretches of a page (second pass, scaled x2). */
+async function ocrMoves(img, words) {
+  var spans = moveSpans(words);
+  if (!spans.length) return '';
+  var w = await movesReady(), parts = [];
+  for (var i = 0; i < spans.length; i++) {
+    var s = spans[i], pad = 6, x = Math.max(0, s.x0 - pad), y = Math.max(0, s.y0 - pad);
+    var r = { x: x, y: y, w: Math.min(img.width - x, s.x1 - s.x0 + 2 * pad), h: Math.min(img.height - y, s.y1 - s.y0 + 2 * pad) };
+    var src = grayToCanvas(img, r), cv = document.createElement('canvas');
+    cv.width = r.w * 2; cv.height = r.h * 2;
+    var ctx = cv.getContext('2d'); ctx.imageSmoothingEnabled = false; ctx.drawImage(src, 0, 0, cv.width, cv.height);
+    var res = await w.recognize(cv);
+    parts.push((res.data.text || '').trim());
+    src.width = src.height = cv.width = cv.height = 0;
+  }
+  return parts.join(' ');
 }
 
 /**
@@ -56,5 +91,6 @@ export async function ocrPage(img, boards) {
       });
     });
   });
-  return { words: words, text: res.data.text || words.map(function (x) { return x.text; }).join(' ') };
+  var text = res.data.text || words.map(function (x) { return x.text; }).join(' ');
+  return { words: words, text: text, moves: await ocrMoves(img, words) };
 }

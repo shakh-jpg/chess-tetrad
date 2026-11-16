@@ -6,7 +6,7 @@
 import { findBoards, readMarker } from './boards.js';
 import { recognizeBoard, recognizeSquares, grayToCanvas } from './recognize.js';
 import { altsFrom } from './review.js';
-import { bestRun, tokenize, toMovetext, diagramNumber } from './moves.js';
+import { readMoves, tokenize, toMovetext, diagramNumber } from './moves.js';
 import { ocrPage } from './ocr.js';
 import { Samples } from '../recognition/samples.js';
 
@@ -42,10 +42,18 @@ export function recogFontReady() {
   return fontReady;
 }
 
-/** Moves for a position from the page text: the longest legal run (see scan/moves.js). */
-export function movesFor(fen, text) {
-  var run = bestRun(fen, tokenize(text || ''));
-  return { moves: run.moves.length ? toMovetext(fen, run.moves) : '', movesList: run.moves.map(function (m) { return { san: m.san, sure: m.sure }; }) };
+/**
+ * Moves for a position from the page text (see scan/moves.js readMoves). Without a □/■ marker
+ * the side to move is unknown: both are tried, and the side whose moves read better is returned.
+ */
+export function movesFor(fen, text, sideKnown) {
+  var sides = sideKnown === false ? ['w', 'b'] : [fen.split(' ')[1]], best = null;
+  sides.forEach(function (s) {
+    var f = fen.replace(/ [wb] /, ' ' + s + ' '), run = readMoves(f, tokenize(text || ''));
+    if (!best || run.sure > best.run.sure) best = { run: run, fen: f };
+  });
+  var r = best.run;
+  return { fen: best.fen, side: best.fen.split(' ')[1], moves: r.moves.length ? toMovetext(best.fen, r.moves) : '', movesList: r.moves.map(function (m) { return { san: m.san, sure: m.sure }; }) };
 }
 
 /**
@@ -72,8 +80,12 @@ export async function processScanPage(img, page, file, opts) {
     if (ocr) {
       var num = diagramNumber(ocr.words, b.outer);
       if (num) r.number = num;
-      r.text = ocr.text; // kept with the images (scan-store), so moves can be found again after the coach fixes the board
-      if (rec.valid) Object.assign(r, movesFor(rec.fen, ocr.text));
+      // the text of the moves is kept with the images (scan-store): moves are found again after the coach fixes the board
+      r.text = ocr.moves || ocr.text;
+      if (rec.valid) {
+        var mv = movesFor(rec.fen, r.text, rec.sideKnown);
+        if (mv.movesList.length) Object.assign(r, mv); // with an unknown side, the moves also tell who is to move
+      }
     }
     return r;
   });

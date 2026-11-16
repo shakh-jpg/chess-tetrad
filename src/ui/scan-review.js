@@ -156,7 +156,7 @@ export function openScanReview(o) {
     editResult(r, V.cells, side, $('#sr-task', body).checked);
     r.status = 'new'; // an edited diagram is confirmed again (that updates it in the book)
     // the moves depend on the position: look for them in the page text again
-    if (V.text && !r.noMoves) { if (r.valid) Object.assign(r, movesFor(r.fen, V.text)); else { r.moves = ''; r.movesList = []; } }
+    if (V.text && !r.noMoves) { if (r.valid) Object.assign(r, movesFor(r.fen, V.text, true)); else { r.moves = ''; r.movesList = []; } }
     drawBoard(r); renderStatus(r); renderMoves(r); renderCounts(); saveSoon();
   }
   function go(d) { if (!V.list.length) return; V.pos = (V.pos + d + V.list.length) % V.list.length; renderItem(); }
