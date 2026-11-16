@@ -6,7 +6,7 @@
 import { findBoards, readMarker } from './boards.js';
 import { recognizeBoard, recognizeSquares, grayToCanvas } from './recognize.js';
 import { altsFrom } from './review.js';
-import { readMoves, tokenize, toMovetext, diagramNumber } from './moves.js';
+import { readMoves, readPageMoves, tokenize, toMovetext, diagramNumber } from './moves.js';
 import { ocrPage } from './ocr.js';
 import { Samples } from '../recognition/samples.js';
 
@@ -65,7 +65,7 @@ export async function processScanPage(img, page, file, opts) {
   var samples = Samples.list(profileName(file));
   var ocr = null;
   if (boards.length && opts && opts.ocr) ocr = await ocrPage(img, boards);
-  return boards.map(function (b, k) {
+  var out = boards.map(function (b, k) {
     var mk = readMarker(img, b);
     var rec = recognizeBoard(img, b, mk, samples.length ? samples : null);
     var r = {
@@ -82,13 +82,21 @@ export async function processScanPage(img, page, file, opts) {
       if (num) r.number = num;
       // the text of the moves is kept with the images (scan-store): moves are found again after the coach fixes the board
       r.text = ocr.moves || ocr.text;
-      if (rec.valid) {
-        var mv = movesFor(rec.fen, r.text, rec.sideKnown);
-        if (mv.movesList.length) Object.assign(r, mv); // with an unknown side, the moves also tell who is to move
-      }
     }
     return r;
   });
+  if (ocr) {
+    // all diagrams of the page at once: a stretch of moves belongs to one diagram only.
+    // Without a □/■ marker the side to move comes from the moves (movesFor tries both).
+    var fens = out.map(function (r) { return r.valid ? (r.sideKnown ? r.fen : movesFor(r.fen, r.text, false).fen) : null; });
+    readPageMoves(fens, tokenize(out.length ? out[0].text : '')).forEach(function (run, k) {
+      if (!fens[k] || !run.moves.length) return;
+      out[k].fen = fens[k]; out[k].side = fens[k].split(' ')[1];
+      out[k].moves = toMovetext(fens[k], run.moves);
+      out[k].movesList = run.moves.map(function (m) { return { san: m.san, sure: m.sure }; });
+    });
+  }
+  return out;
 }
 
 // --- learning from the coach's corrections (stage D): work on the stored board image

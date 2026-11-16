@@ -104,3 +104,19 @@ describe('a game through the commentary (figurine book, English OCR pass)', () =
     expect(r.moves[1].sure).toBe(false); // «2d3»: ♗d3 or ♕d3 — chosen by what follows, marked uncertain
   });
 });
+
+describe('main line and calibration', async () => {
+  const { readPageMoves, MAIN, VAR } = await import('../src/scan/moves.js');
+  const fen = '8/p7/2k1K3/2p5/PpP5/1P6/8/8 b - - 0 1';
+  it('a variation (regular type) does not beat the main line (bold)', () => {
+    const text = VAR + ' 1... a6 2. a5 ' + MAIN + ' 1... 2b6! 2. d5 a6! 3. 2d6';
+    const [r] = readPageMoves([fen], tokenize(text));
+    expect(r.moves.map((m) => m.san)).toEqual(['Kb6', 'Kd5', 'a6', 'Kd6']);
+  });
+  it('a stretch of moves belongs to one diagram; short lines are not reliable', () => {
+    const other = '8/p7/2k5/2p1K3/PpP5/1P6/8/8 b - - 0 1'; // same moves are legal here too
+    const res = readPageMoves([fen, other], tokenize(MAIN + ' 1... 2b6! 2. d5 a6! 3. 2d6'));
+    expect(res[0].moves.length + res[1].moves.length).toBeLessThanOrEqual(4);
+    expect(readPageMoves([fen], tokenize('1... 2b6! 2. d5'))[0].moves.every((m) => !m.sure)).toBe(true);
+  });
+});

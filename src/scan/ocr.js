@@ -3,7 +3,7 @@
 // when a scanned book is read with moves; the service worker caches the files on first use, so
 // it works offline afterwards. Runs in tesseract's own Web Worker.
 import { grayToCanvas } from './recognize.js';
-import { moveSpans } from './moves.js';
+import { moveSpans, boldSpans, MAIN, VAR } from './moves.js';
 
 var workerP = null, movesP = null;
 
@@ -56,6 +56,8 @@ export async function ocrClose() {
 async function ocrMoves(img, words) {
   var spans = moveSpans(words);
   if (!spans.length) return '';
+  // main line or variation: bold type and parentheses (see boldSpans)
+  var bold = boldSpans(img, words, spans);
   var w = await movesReady(), parts = [];
   for (var i = 0; i < spans.length; i++) {
     var s = spans[i], pad = 6, x = Math.max(0, s.x0 - pad), y = Math.max(0, s.y0 - pad);
@@ -64,7 +66,9 @@ async function ocrMoves(img, words) {
     cv.width = r.w * 2; cv.height = r.h * 2;
     var ctx = cv.getContext('2d'); ctx.imageSmoothingEnabled = false; ctx.drawImage(src, 0, 0, cv.width, cv.height);
     var res = await w.recognize(cv);
-    parts.push((res.data.text || '').trim());
+    var inSpan = words.filter(function (wd) { return wd.x0 >= s.x0 && wd.x1 <= s.x1 && wd.y0 >= s.y0 - 2 && wd.y1 <= s.y1 + 2; });
+    var paren = inSpan.some(function (wd) { return wd.text.indexOf('(') >= 0; });
+    parts.push((paren || (bold && !bold[i]) ? VAR : bold ? MAIN : '') + ' ' + (res.data.text || '').trim());
     src.width = src.height = cv.width = cv.height = 0;
   }
   return parts.join(' ');

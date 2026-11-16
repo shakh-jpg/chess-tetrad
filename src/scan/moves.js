@@ -133,7 +133,16 @@ export function tokenize(text) {
   return out;
 }
 function isNumber(t) { return /^\d+\s*\.{1,4}$/.test(t) || /^\.{2,4}$/.test(t); }
-function isAnnotation(t) { return /^[!?+#=∓±⩲⩱∞]+$/.test(t) || /^\([!?]+\)$/.test(t); }
+function isAnnotation(t) { return /^[!?+#=∓±⩲⩱∞]+$/.test(t) || /^\([!?]+\)$/.test(t) || isMark(t); }
+// stretch marks put by the OCR (see ocr.js): ⓜ main line (bold), ⓥ variation (regular type or parentheses)
+export var MAIN = 'ⓜ', VAR = 'ⓥ';
+function isMark(t) { return t === MAIN || t === VAR; }
+/** Flag of each token: 'm', 'v' or '' (the last mark before it). @param {string[]} tokens */
+function flagsOf(tokens) {
+  var f = '', out = [];
+  for (var i = 0; i < tokens.length; i++) { if (tokens[i] === MAIN) f = 'm'; else if (tokens[i] === VAR) f = 'v'; out.push(f); }
+  return out;
+}
 
 /** The move number right before token i («16...», «17.»), or 0. @param {string[]} tokens @param {number} i */
 function numberBefore(tokens, i) {
@@ -156,7 +165,7 @@ function scanRun(fen, tokens, i) {
     if (all.length > 1) mv = settleTie(c, all, tokens, j + 1);
     if (!mv) break;
     c.move(mv.san);
-    run.push({ san: mv.san, sure: mv.sure, tok: t });
+    run.push({ san: mv.san, sure: mv.sure, tok: t, ti: j });
     if (mv.sure) sure++;
   }
   return { moves: run, sure: sure, num: numberBefore(tokens, i), end: j, fen: c.fen() };
@@ -209,9 +218,15 @@ export function bestRun(fen, tokens) {
  * from pos, or — when the move there is unreadable — the legal move after which the text goes
  * on best (a "bridge", marked uncertain). @returns {any} null if nothing fits
  */
-function nextStep(pos, tokens, from, expNum) {
+function nextStep(pos, tokens, from, expNum, flags) {
+  // the main line first: a continuation inside a variation only when nothing else fits
+  if (flags) { var main = nextStepIn(pos, tokens, from, expNum, flags); if (main) return main; }
+  return nextStepIn(pos, tokens, from, expNum, null);
+}
+function nextStepIn(pos, tokens, from, expNum, flags) {
   for (var k = from; k < tokens.length; k++) {
     if (isNumber(tokens[k]) || isAnnotation(tokens[k])) continue;
+    if (flags && flags[k] === 'v') continue;
     if (expNum && numberBefore(tokens, k) !== expNum) continue;
     if (!expNum && numberBefore(tokens, k) === 0) continue;
     var r = scanRun(pos.fen(), tokens, k);
@@ -237,10 +252,10 @@ function nextStep(pos, tokens, from, expNum) {
       if (score > bestS) { bestS = score; best = { m: m, rr: rr }; }
     });
     if (best && bestS >= 18) {
-      best.rr.moves.unshift({ san: best.m.san, sure: false, tok: tokens[k] });
+      best.rr.moves.unshift({ san: best.m.san, sure: false, tok: tokens[k], ti: k });
       return best.rr;
     }
-    if (expNum) return null; // the numbered place is there but nothing fits
+    if (expNum && !flags) return null; // the numbered place is there but nothing fits
   }
   return null;
 }
@@ -256,19 +271,22 @@ export function readMoves(fen, tokens) {
   var base = new Chess();
   var none = { moves: [], start: -1, sure: 0, num: 0, end: -1, fen: fen };
   if (!base.load(fen)) return none;
-  var firstSide = fen.split(' ')[1];
+  var firstSide = fen.split(' ')[1], flags = flagsOf(tokens), marked = flags.some(Boolean);
   // a line from a start run, continued at the expected move numbers
   function chainFrom(first) {
     var moves = first.moves.slice(), pos = new Chess(fen), end = first.end, startNum = first.num || 0;
     moves.forEach(function (m) { pos.move(m.san); });
     while (startNum && moves.length < 400) {
       var idx = moves.length + (firstSide === 'b' ? 1 : 0), expNum = startNum + Math.floor(idx / 2);
-      var next = nextStep(pos, tokens, end, expNum);
+      var next = nextStep(pos, tokens, end, expNum, marked ? flags : null);
       if (!next || !next.moves.length) break;
       next.moves.forEach(function (m) { pos.move(m.san); moves.push(m); });
       end = next.end;
     }
-    return { moves: moves, start: first.start, sure: moves.filter(function (m) { return m.sure; }).length, num: first.num, end: end, fen: pos.fen() };
+    moves.forEach(function (m) { m.flag = flags[m.ti] || ''; });
+    // weight: exact moves of the main line count most, of a variation least
+    var score = moves.reduce(function (a, m) { return a + (m.sure ? (m.flag === 'm' ? 2 : m.flag === 'v' ? 0.5 : 1) : 0); }, 0);
+    return { moves: moves, start: first.start, sure: moves.filter(function (m) { return m.sure; }).length, score: score, num: first.num, end: end, fen: pos.fen() };
   }
   // candidates: the best run, and every numbered place where the first move reads exactly
   var cands = [], b0 = bestRun(fen, tokens);
@@ -282,7 +300,7 @@ export function readMoves(fen, tokens) {
   cands.forEach(function (c) {
     var ch = chainFrom(c);
     // a chain must be worth it: 2+ exact moves (a single exact long move only from bestRun)
-    if ((ch.sure >= 2 || c === b0) && ch.sure > best.sure) best = ch;
+    if ((ch.sure >= 2 || c === b0) && (best === none || ch.score > best.score)) best = ch;
   });
   return best;
 }
@@ -356,3 +374,75 @@ export function moveSpans(words) {
   close();
   return spans;
 }
+
+/** Mean length of horizontal runs of dark pixels in a box: stroke thickness, higher for bold type. @param {{ width: number, gray: ArrayLike<number> }} g @param {{ x0: number, y0: number, x1: number, y1: number }} b */
+export function strokeWidth(g, b) {
+  var runs = 0, dark = 0;
+  for (var y = Math.max(0, b.y0); y < b.y1; y++) {
+    var inRun = false;
+    for (var x = Math.max(0, b.x0); x < b.x1; x++) {
+      var d = g.gray[y * g.width + x] < 128;
+      if (d) { dark++; if (!inRun) runs++; }
+      inRun = d;
+    }
+  }
+  return runs ? dark / runs : 0;
+}
+
+/** Share of dark pixels in a box of a gray page. @param {{ width: number, gray: ArrayLike<number> }} g @param {{ x0: number, y0: number, x1: number, y1: number }} b */
+export function inkDensity(g, b) {
+  var d = 0, n = 0;
+  for (var y = Math.max(0, b.y0); y < b.y1; y++) for (var x = Math.max(0, b.x0); x < b.x1; x++) { n++; if (g.gray[y * g.width + x] < 128) d++; }
+  return n ? d / n : 0;
+}
+
+/**
+ * Which move stretches are the main line: books print it bold and variations in regular weight
+ * (Dvoretsky, Gelfand). A stretch is bold when its words are clearly darker than the page's
+ * typical word. Returns a flag per span, or null when the page shows no such contrast.
+ * @param {{ width: number, gray: ArrayLike<number> }} g
+ * @param {{ text: string, x0: number, y0: number, x1: number, y1: number }[]} words
+ * @param {{ x0: number, y0: number, x1: number, y1: number }[]} spans
+ * @returns {boolean[]|null}
+ */
+export function boldSpans(g, words, spans) {
+  var prose = words.filter(function (w) { return /[А-Яа-яё]{4}/.test(w.text) && !/\d/.test(w.text); })
+    .map(function (w) { return { w: w, s: strokeWidth(g, w) }; });
+  if (prose.length < 10 || !spans.length) return null;
+  // stroke of the prose near the stretch (same column, close above or below): scans differ by place
+  var flags = spans.map(function (sp) {
+    var near = prose.filter(function (p) { return p.w.x0 < sp.x1 + 40 && p.w.x1 > sp.x0 - 40 && Math.abs(p.w.y0 - sp.y0) < 300; })
+      .map(function (p) { return p.s; }).sort(function (a, b) { return a - b; });
+    if (near.length < 4) return null;
+    return strokeWidth(g, sp) > near[near.length >> 1] * BOLD_RATIO;
+  });
+  var known = flags.filter(function (f) { return f !== null; });
+  // contrast must exist on the page: some move stretches bold, some not
+  if (!known.some(Boolean) || !known.some(function (f) { return !f; })) return null;
+  return flags.map(function (f) { return f === null ? true : f; });
+}
+export var BOLD_RATIO = 1.12;
+
+/**
+ * Moves for all diagrams of a page at once. A stretch of text belongs to one diagram only: when
+ * lines of two diagrams use the same moves, the stronger line keeps them and the other is cut
+ * before them. Calibration: a move is reliable only when it was read exactly, is not in a
+ * variation, and its line has at least MIN_RELIABLE exact moves.
+ * @param {string[]} fens @param {string[]} tokens
+ */
+export function readPageMoves(fens, tokens) {
+  /** @type {{ i: number, r: any }[]} */ var lines = fens.map(function (f, i) { return { i: i, r: f ? readMoves(f, tokens) : null }; });
+  var order = lines.filter(function (l) { return l.r && l.r.moves.length; }).sort(function (a, b) { return b.r.score - a.r.score; });
+  var claimed = {};
+  order.forEach(function (l) {
+    var ms = l.r.moves, cut = ms.findIndex(function (m) { return claimed[m.ti]; });
+    if (cut >= 0) ms = ms.slice(0, cut);
+    ms.forEach(function (m) { claimed[m.ti] = true; });
+    var exact = ms.filter(function (m) { return m.sure; }).length;
+    if (exact < 2) ms = [];
+    ms = ms.map(function (m) { return Object.assign({}, m, { sure: m.sure && m.flag !== 'v' && exact >= MIN_RELIABLE }); });
+    l.r = Object.assign({}, l.r, { moves: ms });
+  });
+  return lines.map(function (l) { return l.r || { moves: [] }; });
+}
+export var MIN_RELIABLE = 3;
