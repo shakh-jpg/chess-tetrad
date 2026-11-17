@@ -200,7 +200,7 @@ svg.bd.shake { animation: shake .3s; }
 .chk { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; }
 .dg-stage { max-height: 52vh; overflow: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--panel2); padding: 8px; }
 .dg-wrap { position: relative; display: inline-block; touch-action: none; cursor: crosshair; max-width: 100%; }
-.dg-wrap canvas { display: block; max-width: 100%; height: auto; }
+.dg-wrap canvas { display: block; max-width: 100%; max-height: calc(52vh - 18px); width: auto; height: auto; }
 .dg-sel { position: absolute; border: 2px solid var(--accent); background-color: rgba(30, 79, 194, .12); pointer-events: none;
   background-image: linear-gradient(to right, rgba(30, 79, 194, .55) 1px, transparent 1px), linear-gradient(to bottom, rgba(30, 79, 194, .55) 1px, transparent 1px); background-size: 12.5% 12.5%; }
 

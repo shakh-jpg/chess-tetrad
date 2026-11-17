@@ -160,6 +160,16 @@ export function createEditorDialog(ctx) {
         D.rect = { x: x0 / r.width * D.w, y: y0 / r.height * D.h, w: side / r.width * D.w, h: side / r.height * D.h };
       }
       function finish() { var ok = D.rect && D.rect.w > 40; $('#dg-go', m.el).disabled = !ok; status.className = 'status'; status.textContent = ok ? 'Область выбрана. Сетка 8×8 должна совпадать с клетками. Если нет, обведите заново.' : 'Область слишком мала.'; }
+      // A (nearly) square picture is usually just the board (a screenshot from a phone app):
+      // select it whole, so on a phone it is enough to press «Распознать».
+      if (Math.abs(w / h - 1) < 0.06) {
+        var s = Math.min(w, h);
+        D.rect = { x: 0, y: 0, w: s, h: s };
+        sel.hidden = false; sel.style.left = '0px'; sel.style.top = '0px';
+        sel.style.width = (s / w * 100) + '%'; sel.style.height = (s / h * 100) + '%';
+        finish();
+        status.textContent = 'Похоже, на картинке только доска — она выбрана целиком. Если это не так, обведите доску заново.';
+      }
     }
     async function renderPdf() {
       var page = await D.pdf.getPage(D.page), vp = page.getViewport({ scale: 2 });
@@ -180,7 +190,7 @@ export function createEditorDialog(ctx) {
           var sc = Math.min(1, 1600 / Math.max(img.width, img.height));
           show(img, Math.round(img.width * sc), Math.round(img.height * sc));
         }
-        status.textContent = 'Обведите доску мышью или пальцем.';
+        if (!D.rect) status.textContent = 'Обведите доску мышью или пальцем.';
       } catch (e) { status.className = 'status bad'; status.textContent = e.message || 'Не удалось открыть файл.'; }
     }
     $('#dg-file', m.el).addEventListener('change', function (e) { if (e.target.files[0]) loadFile(e.target.files[0]); });
