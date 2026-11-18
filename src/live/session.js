@@ -51,13 +51,13 @@ export function createLessonSession(o) {
     if (stateTimer) return;
     stateTimer = setTimeout(sendState, Math.max(200, 1000 - (Date.now() - lastState)));
   }
-  // the coach opened another record (or started the lesson)
+  // the coach opened another record (or started the lesson). The previous record was saved by
+  // itemLeaving(), called before the app replaced its tree.
   function docChanged() {
     if (!isCoach || !st.open) return;
-    snapshotDoc();
     var it = S.item;
     st.doc = { id: P.docId(), fen: S.root.fen, type: it && it.type === 'puzzle' ? 'puzzle' : 'game', title: P.cleanText(it ? it.title : '', P.LIMITS.title) || 'Свободная доска' };
-    addDoc(st.doc, { recorded: !!(it && it.recorded) });
+    addDoc(st.doc, { recorded: !!(it && it.recorded), mt: Core.toMovetext(S.root) });
     // a book's own comments are not sent to students (only the coach's)
     bookComments = H.isOwnItem && H.isOwnItem() ? null : P.collectComments(S.root);
     lastMt = P.lessonMovetext(S.root, bookComments);
@@ -228,6 +228,7 @@ export function createLessonSession(o) {
       if (isCoach) docChanged();
     },
     docChanged: docChanged, treeChanged: treeChanged, curChanged: curChanged,
+    itemLeaving: function () { if (st.open) snapshotDoc(); },
     setMode: function (m) {
       if (!isCoach) return;
       if (typeof m.lock === 'boolean') st.lock = m.lock;

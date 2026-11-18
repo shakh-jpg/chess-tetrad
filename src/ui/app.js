@@ -37,6 +37,7 @@ import { solutionLocked } from '../sync/model.js';
   function curItemRef() { return S.item; }
   function loadItem(book, item, silent) {
     stopEngineRun();
+    Live.itemLeaving();
     S.book = book; S.item = item; S.hint = null; S.sel = null; S.dots = []; S.msg = null;
     var r = Core.parseMovetext(item.startFen, item.text || '');
     S.root = r.root; S.cur = S.root;

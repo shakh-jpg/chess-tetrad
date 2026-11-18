@@ -19,7 +19,7 @@ var NOT_ENABLED = 'Онлайн-урок ещё не включён в обла�
 export function createLive(ctx) {
   var S = ctx.S, toast = ctx.toast, openModal = ctx.openModal;
   var backend = null, session = null, lesson = null, offer = null, resume = null;
-  var inited = false, pollTimer = null, saveTimer = null, engineToastShown = false, polling = false, leaveMsg = '';
+  var inited = false, pollTimer = null, saveTimer = null, engineToastShown = false, polling = false, leaveMsg = '', endedIds = {};
 
   function role() { return backend ? backend.role() : 'none'; }
   function studentIn() { return !!(session && session.state.role === 's' && session.state.open); }
@@ -70,6 +70,8 @@ export function createLive(ctx) {
     if (!s || !l) return;
     session = null; lesson = null;
     clearTimeout(saveTimer);
+    // an ended lesson is not offered again (the server may answer a little later)
+    if (reason === 'ended') { endedIds[l.id] = true; if (offer && offer.lesson_id === l.id) offer = null; }
     var stored = lsGet(STORE_KEY, null);
     var snap = mergeSnap(stored && stored.id === l.id ? stored.snap : null, s.snapshot());
     lsSet(STORE_KEY, null);
@@ -97,6 +99,7 @@ export function createLive(ctx) {
         if (asCoach && kind === 'move') ctx.saveItem();
         if (!asCoach && kind === 'state') { engineToastShown = false; if (window.innerWidth < 900) S.pane = 'board'; }
         ctx.renderAll(); ctx.scheduleEngine();
+        if (kind === 'state' || kind === 'mode') bar();
         storeSoon();
       },
       info: bar,
@@ -171,6 +174,7 @@ export function createLive(ctx) {
     try {
       if (r === 'student') {
         offer = await backend.myLiveLesson();
+        if (offer && (typeof offer.lesson_id !== 'string' || endedIds[offer.lesson_id])) offer = null;
         // the lesson ended while we did not hear it (no network): save what we have
         if (studentIn() && (!offer || offer.lesson_id !== lesson.id)) session.end();
         var stored = lsGet(STORE_KEY, null);
@@ -298,6 +302,8 @@ export function createLive(ctx) {
     curChanged: function () { if (session) session.curChanged(); },
     drawChanged: function () { if (coachIn()) session.curChanged(); },
     flipChanged: function () { if (coachIn()) session.flipChanged(); },
+    // before the app replaces the board with another record: the lesson keeps the old one
+    itemLeaving: function () { if (coachIn()) session.itemLeaving(); },
     itemLoaded: function () {
       if (!inited) return;
       if (coachIn()) { session.docChanged(); bar(); return; }

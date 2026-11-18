@@ -215,6 +215,7 @@ describe('lesson session (coach -> students)', () => {
 
   it('a new record opened by the coach replaces the board; the end of the lesson keeps every record', () => {
     cS.cur = Core.tryMove(cS.root.kids[0].kids[0], 'Nf3').node; coach.treeChanged();
+    coach.itemLeaving(); // the app calls it before it opens another record
     const r = Core.parseMovetext('6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1', '1. Rd8#');
     cS.item = { id: 'p1', type: 'puzzle', title: 'Задача', startFen: '6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1' };
     cS.root = r.root; cS.cur = r.root;
@@ -227,6 +228,6 @@ describe('lesson session (coach -> students)', () => {
     const snap = p.s.snapshot();
     expect(snap.docs.map((d) => d.mt)).toEqual(['1. e4 e5 2. Nf3', '1. Rd8#']);
     expect(snap.participants).toEqual(expect.arrayContaining(['Петя', 'Маша', 'Тренер']));
-    expect(coach.snapshot().docs.length).toBe(2);
+    expect(coach.snapshot().docs.map((d) => d.mt)).toEqual(['1. e4 e5 2. Nf3', '1. Rd8#']);
   });
 });
