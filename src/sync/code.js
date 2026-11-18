@@ -28,6 +28,7 @@ var ERRORS = {
   too_many_students: 'Слишком много учеников.',
   not_found: 'Ученик не найден.',
   // login and password of a student
+  no_login: 'Впишите логин в верхнее поле. Серый текст «arman2014» — только пример, его нужно заменить своим.',
   bad_login: 'Логин: только латинские буквы и цифры, от 3 до 30 знаков.',
   bad_password: 'Пароль должен быть не короче 8 знаков.',
   login_taken: 'Такой логин уже занят. Придумайте другой.',
@@ -39,6 +40,7 @@ var ERRORS = {
 
 /** Checks a login and a password before sending them: error code or ''. */
 export function checkLogin(login, pass, pass2) {
+  if (!String(login || '').trim()) return 'no_login';
   if (!/^[a-zA-Z0-9]{3,30}$/.test(String(login || '').trim())) return 'bad_login';
   if (String(pass || '').length < 8 || String(pass).length > 72) return 'bad_password';
   if (pass2 !== undefined && pass !== pass2) return 'password_mismatch';

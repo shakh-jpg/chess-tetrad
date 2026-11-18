@@ -180,7 +180,7 @@ export function initAccount(ctx) {
   function renderSetLogin(m, body, first) {
     body.innerHTML = '<section class="acc-card acc-setlogin"><h4>Придумайте логин и пароль</h4>' +
       '<p class="hint-note">С ними вы войдёте на любом телефоне или компьютере и увидите свои задачи. Почта не нужна. Пароль никому не говорите — даже тренеру.</p>' +
-      '<label class="fld">Логин (латинские буквы и цифры, 3–30)<input id="acc-new-login" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="30" placeholder="Например: arman2014"></label>' +
+      '<label class="fld">Логин (латинские буквы и цифры, 3–30)<input id="acc-new-login" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="30" placeholder="пример: arman2014"></label>' +
       '<label class="fld">Пароль (не короче 8 знаков)<input id="acc-new-pass" type="password" autocomplete="new-password" maxlength="72"></label>' +
       '<label class="fld">Пароль ещё раз<input id="acc-new-pass2" type="password" autocomplete="new-password" maxlength="72"></label>' +
       '<div class="seg wrap"><button class="btn primary" id="acc-save-login">Сохранить</button><button class="btn" id="acc-skip-login">' + (first ? 'Пропустить' : 'Отмена') + '</button></div>' +
@@ -192,7 +192,7 @@ export function initAccount(ctx) {
     body.querySelector('#acc-save-login').addEventListener('click', async function () {
       var login = body.querySelector('#acc-new-login').value, p1 = body.querySelector('#acc-new-pass').value, p2 = body.querySelector('#acc-new-pass2').value;
       var bad = checkLogin(login, p1, p2);
-      if (bad) { status(st, 'bad', errorText(bad)); return; }
+      if (bad) { status(st, 'bad', errorText(bad)); if (bad === 'no_login' || bad === 'bad_login') body.querySelector('#acc-new-login').focus(); return; }
       status(st, '', 'Сохраняю…');
       try {
         var r = await api.setStudentLogin(login, p1);

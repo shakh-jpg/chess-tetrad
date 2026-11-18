@@ -5,6 +5,8 @@ import { checkLogin, errorText } from '../src/sync/code.js';
 describe('student login check', () => {
   it('login: Latin letters and digits, 3-30; password 8-72; both passwords equal', () => {
     expect(checkLogin('arman2014', 'secret123', 'secret123')).toBe('');
+    expect(checkLogin('', 'secret123')).toBe('no_login');
+    expect(checkLogin('   ', 'secret123')).toBe('no_login');
     expect(checkLogin('ar', 'secret123')).toBe('bad_login');
     expect(checkLogin('арман', 'secret123')).toBe('bad_login');
     expect(checkLogin('arman_1', 'secret123')).toBe('bad_login');
