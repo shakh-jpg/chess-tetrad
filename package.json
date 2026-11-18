@@ -18,6 +18,7 @@
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json",
     "e2e": "playwright test --project=desktop",
+    "e2e:webkit": "playwright test --project=webkit",
     "screenshots": "playwright test --project=screenshots"
   },
   "dependencies": {

@@ -1,6 +1,9 @@
 // End-to-end tests on the production build (npm run build first; CI does it).
 // Locally the installed Microsoft Edge is used (no 150 MB browser download);
-// in CI Playwright's own Chromium is installed. Only one browser engine: Chromium.
+// in CI Playwright's own Chromium is installed.
+// The 'webkit' project (Safari's engine: students on iPhones) runs only when asked:
+//   npx playwright install webkit   (one-time download into the user profile, no admin rights)
+//   npm run e2e:webkit
 import { defineConfig, devices } from '@playwright/test';
 
 const PORT = 4174;
@@ -18,7 +21,9 @@ export default defineConfig({
   },
   projects: [
     { name: 'desktop', use: { ...devices['Desktop Chrome'], ...(process.env.CI ? {} : { channel: 'msedge' }) }, testIgnore: /screenshots/ },
-    { name: 'screenshots', use: { ...(process.env.CI ? {} : { channel: 'msedge' }) }, testMatch: /screenshots/ }
+    { name: 'screenshots', use: { ...(process.env.CI ? {} : { channel: 'msedge' }) }, testMatch: /screenshots/ },
+    // Safari's engine; the main flows, the lesson and the phone layout (scan import is Chromium-only)
+    { name: 'webkit', use: { ...devices['Desktop Safari'] }, testMatch: /(app|live|record)\.spec/ }
   ],
   webServer: {
     // serves dist/ on loopback only
