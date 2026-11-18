@@ -14,6 +14,20 @@ and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   uses them. Optionally starts from the current position. The engine is off while recording until
   switched on. On phones "Назад / Удалить ход / Заголовки" sit in one row at the bottom of the board.
 - The recorded-game format (`headers`, `source: 'record' | 'live'`) is ready for live games (stage 5).
+- Online lesson over Supabase Realtime (stage 5), replacing the claude.ai-only room: the coach starts a
+  lesson for chosen students, students see "Тренер начал урок → Присоединиться". Moves, variations, the
+  current move, arrows and board side are mirrored; "Ходит только тренер / Тренер и ученики" and
+  "Движок ученикам" are the coach's switches (by default only the coach moves and students have no
+  engine). Students' moves are requests that the coach's app checks with chess.js. Reconnection asks
+  for the full state again. At the end every record of the lesson is saved to «Уроки» on every device
+  (headers, `source: 'live'`, participants by nick). Book comments are never sent to students.
+- Migration `20261118000001_live_lessons.sql`: `lessons` table, private Realtime channels with policies
+  on `realtime.messages` (only the lesson's coach writes the board; only invited students read it),
+  `sets.allow_solution`. Tested on PGlite (`tests/sql/lessons.test.js`).
+- Coach's sets hide the solution until the puzzle is solved (no "Показать решение", free analysis,
+  engine, "edit moves" or PGN export); "Пропустить" records it as not solved. The coach can tick
+  "Разрешить показ решения" when assigning.
+- Optional Playwright project `webkit` (Safari's engine), non-blocking CI job.
 
 ## [0.2.0] - 2026-11-15
 

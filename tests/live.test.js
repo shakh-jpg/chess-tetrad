@@ -231,3 +231,80 @@ describe('lesson session (coach -> students)', () => {
     expect(coach.snapshot().docs.map((d) => d.mt)).toEqual(['1. e4 e5 2. Nf3', '1. Rd8#']);
   });
 });
+
+// ---------------------------------------------------------------- Supabase transport (fake client)
+import { createSupabaseTransport } from '../src/live/transport.js';
+import { lessonsMissing } from '../src/live/backend.js';
+
+function fakeRealtime() {
+  const channels = [];
+  return {
+    channels,
+    realtime: { setAuth: vi.fn(async () => {}) },
+    channel(topic, opts) {
+      const ch = { topic, opts, handlers: [], sent: [], tracked: null, removed: false, status: null,
+        on(type, filter, cb) { this.handlers.push({ type, filter, cb }); return this; },
+        subscribe(cb) { this.statusCb = cb; return this; },
+        send(m) { this.sent.push(m); return Promise.resolve('ok'); },
+        track(meta) { this.tracked = meta; return Promise.resolve('ok'); },
+        presenceState() { return { a: [{ r: 'c', n: 'Тренер' }], b: [{ r: 's', n: 'Петя' }] }; },
+        emit(type, payload) { this.handlers.filter((h) => h.type === type).forEach((h) => h.cb(payload)); }
+      };
+      channels.push(ch);
+      return ch;
+    },
+    removeChannel(ch) { ch.removed = true; }
+  };
+}
+
+describe('Supabase transport', () => {
+  const ID = '11111111-2222-4333-8444-555555555555';
+  it('uses two private channels per lesson and routes messages by role', async () => {
+    const client = fakeRealtime();
+    const t = createSupabaseTransport(client, ID);
+    const got = { coach: [], student: [], presence: [], status: [] };
+    await t.open({ role: 's', meta: { r: 's', n: 'Петя', k: 's1' },
+      onCoach: (e, p) => got.coach.push(e), onStudent: (e) => got.student.push(e), onPresence: (l) => got.presence.push(l), onStatus: (s) => got.status.push(s) });
+    expect(client.realtime.setAuth).toHaveBeenCalled();
+    const [c, s] = client.channels;
+    expect(c.topic).toBe('lesson:' + ID + ':c');
+    expect(s.topic).toBe('lesson:' + ID + ':s');
+    expect(c.opts.config.private).toBe(true);
+    expect(s.opts.config.private).toBe(true);
+    expect(s.opts.config.presence.key).toBe('s1');
+    c.statusCb('SUBSCRIBED'); expect(got.status.at(-1)).toBe('connecting');
+    s.statusCb('SUBSCRIBED'); expect(got.status.at(-1)).toBe('online');
+    expect(s.tracked).toEqual({ r: 's', n: 'Петя', k: 's1' });
+    c.emit('broadcast', { event: 'mv', payload: { x: 1 } });
+    s.emit('broadcast', { event: 'mv', payload: { x: 1 } }); // other students' requests are not for students
+    s.emit('presence', {});
+    expect(got.coach).toEqual(['mv']);
+    expect(got.student).toEqual([]);
+    expect(got.presence[0].map((m) => m.n)).toEqual(['Тренер', 'Петя']);
+    t.sendStudent('hello', {});
+    expect(s.sent).toEqual([{ type: 'broadcast', event: 'hello', payload: {} }]);
+    s.statusCb('CHANNEL_ERROR', new Error('Unauthorized: you do not have permissions to read from this Channel topic'));
+    expect(got.status.at(-1)).toBe('denied');
+    t.close();
+    expect(c.removed && s.removed).toBe(true);
+    t.sendCoach('mv', {}); // after close: nothing is sent
+    expect(c.sent).toEqual([]);
+  });
+  it('the coach receives students\' requests and sends on the coach channel', async () => {
+    const client = fakeRealtime();
+    const t = createSupabaseTransport(client, ID);
+    const got = [];
+    await t.open({ role: 'c', meta: { r: 'c', n: 'Т', k: 'coach' }, onCoach: () => got.push('coach?'), onStudent: (e) => got.push(e), onPresence: () => {}, onStatus: () => {} });
+    const [c, s] = client.channels;
+    s.emit('broadcast', { event: 'mv', payload: {} });
+    c.emit('broadcast', { event: 'state', payload: {} });
+    expect(got).toEqual(['mv']);
+    t.sendCoach('state', { a: 1 });
+    expect(c.sent[0]).toEqual({ type: 'broadcast', event: 'state', payload: { a: 1 } });
+  });
+  it('recognizes "the cloud is not updated yet" errors', () => {
+    expect(lessonsMissing(new Error('Could not find the function public.start_lesson(p_students) in the schema cache'))).toBe(true);
+    expect(lessonsMissing({ code: 'PGRST202' })).toBe(true);
+    expect(lessonsMissing(new Error('Failed to fetch'))).toBe(false);
+  });
+});

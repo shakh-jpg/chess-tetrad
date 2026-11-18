@@ -298,7 +298,7 @@ export function createLive(ctx) {
     isOn: function () { return coachIn() || (studentIn() && session.state.synced); },
     canSaveSetup: function () { return !studentIn(); },
     setup: function () { /* the position editor is not mirrored; a saved position opens as a new record and is sent */ },
-    treeChanged: function () { if (coachIn()) session.treeChanged(); },
+    treeChanged: function () { if (coachIn()) { session.treeChanged(); storeSoon(); } },
     curChanged: function () { if (session) session.curChanged(); },
     drawChanged: function () { if (coachIn()) session.curChanged(); },
     flipChanged: function () { if (coachIn()) session.flipChanged(); },
@@ -306,7 +306,7 @@ export function createLive(ctx) {
     itemLeaving: function () { if (coachIn()) session.itemLeaving(); },
     itemLoaded: function () {
       if (!inited) return;
-      if (coachIn()) { session.docChanged(); bar(); return; }
+      if (coachIn()) { session.docChanged(); storeSoon(); bar(); return; }
       if (studentIn()) { leaveMsg = 'Вы открыли свою запись и вышли из урока (вернуться — «Присоединиться»).'; session.end(); }
     },
     // the student's move during the lesson is a request to the coach
