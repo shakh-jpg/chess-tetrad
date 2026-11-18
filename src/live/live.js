@@ -162,7 +162,7 @@ export function createLive(ctx) {
     try { await backend.prepare(); } catch (e) { toast('Нет связи с облаком. Проверьте интернет.'); return; }
     var p = backend.profile();
     lesson = { id: offer.lesson_id, role: 's' };
-    session = createLessonSession({ role: 's', transport: backend.transport(offer.lesson_id), S: S, me: { k: p.student_id || 'student', n: p.nick || 'Ученик' }, coachName: offer.coach_name || '', hooks: hooks(false) });
+    session = createLessonSession({ role: 's', transport: backend.transport(offer.lesson_id), S: S, me: { k: 's' + Math.random().toString(36).slice(2, 10), n: p.nick || 'Ученик' }, coachName: offer.coach_name || '', hooks: hooks(false) });
     await session.start();
     bar();
   }

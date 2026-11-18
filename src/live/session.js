@@ -142,7 +142,7 @@ export function createLessonSession(o) {
     st.doc = m.doc; st.rev = m.rev; st.synced = true;
     if (m.coach) st.coach = m.coach;
     addDoc(m.doc);
-    S.item = { id: 'live', type: m.doc.type, title: m.doc.title, startFen: m.doc.fen, text: '', plies: 0, result: '' };
+    S.item = { id: 'live', type: m.doc.type, title: m.doc.title, startFen: m.doc.fen, text: '', plies: 0, result: '', section: 'Онлайн-урок' };
     S.root = root; S.mode = 'analyse'; S.solve = null;
     setCur(m.cur, m.dw);
     applyMode(m);
