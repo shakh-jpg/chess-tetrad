@@ -1,7 +1,7 @@
 // Entry point.
 import './fonts.css';
 import './styles.css';
-import { start, openModal, appContext, setProgressHook } from './ui/app.js';
+import { start, openModal, appContext, setProgressHook, setLiveCloud } from './ui/app.js';
 import { bindMenu } from './ui/menu.js';
 import { initInstall, registerSW } from './pwa/pwa.js';
 import { initAccount } from './ui/account.js';
@@ -14,6 +14,8 @@ start().then(function () {
   var ctx = appContext();
   var account = initAccount(ctx);
   setProgressHook(account.onProgress);
+  // Online lesson (stage 5): needs the cloud account; hidden without it.
+  if (account.cloud) setLiveCloud(account.cloud);
   // Backup reminder (every 14 days) when the library lives only in this browser.
   setTimeout(function () {
     maybeRemindBackup({ books: ctx.S.books, cloud: CONFIG.enabled && !!lsGet('st.cloud', false), makeBackup: ctx.exportBackup });

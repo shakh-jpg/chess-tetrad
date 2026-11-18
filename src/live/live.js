@@ -1,245 +1,315 @@
-// Live lesson (teacher board -> students). Moved verbatim from the prototype.
-// Still uses window.claude.use('user' | 'room' | 'downloads'), which exists only inside claude.ai;
-// in a normal browser it stays inactive. To be replaced with a Realtime backend at stage 5.
-// UI functions are passed in via ctx, so the body below is unchanged.
-import { Chess as C } from '../core/chess.js';
+// Online lesson (coach's board -> students) over Supabase Realtime. Stage 5.
+// Replaces the prototype's window.claude.use('room') version (it worked only inside claude.ai;
+// it is in the git history). The exchange itself is in session.js (no DOM), the channels in
+// transport.js, the cloud calls in backend.js; this file is the panel, the dialogs and the
+// connection to the app (the same functions app.js called before: blocked, treeChanged, ...).
 import { Core } from '../core/index.js';
 import { Store } from '../storage/store.js';
-import { $, uid } from '../ui/util.js';
+import { $, esc, uid, lsGet, lsSet } from '../ui/util.js';
+import { ensureBook, newGameItem, LESSONS_BOOK, RECORD_BOOK } from '../ui/record.js';
+import { createLessonSession } from './session.js';
+import { cleanText } from './protocol.js';
+import { cloudBackend, testBackend, lessonsMissing } from './backend.js';
+
+var OWN_BOOKS = [LESSONS_BOOK, RECORD_BOOK, 'Мои позиции'];
+var STORE_KEY = 'st.lesson';
+var POLL_MS = 45000;
+var NOT_ENABLED = 'Онлайн-урок ещё не включён в облаке. Нужно обновление облака (инструкция «Обновление: онлайн-урок»).';
 
 export function createLive(ctx) {
-  var S = ctx.S, toast = ctx.toast, openModal = ctx.openModal, openEditor = ctx.openEditor;
-  var renderAll = ctx.renderAll, renderBoard = ctx.renderBoard, renderEngine = ctx.renderEngine;
-  var renderNavState = ctx.renderNavState, renderLibrary = ctx.renderLibrary;
-  var scheduleEngine = ctx.scheduleEngine, stopEngineRun = ctx.stopEngineRun;
-  var drawPayload = ctx.drawPayload, applyDraw = ctx.applyDraw;
-  function getEditor() { return ctx.getActiveEditor(); }
+  var S = ctx.S, toast = ctx.toast, openModal = ctx.openModal;
+  var backend = null, session = null, lesson = null, offer = null, resume = null;
+  var inited = false, pollTimer = null, saveTimer = null, engineToastShown = false, polling = false, leaveMsg = '';
 
-  var Live = (function () {
-    var room = null, user = null, isT = false, on = false, follow = true, locked = false;
-    var noEng = false, curTr = '', buf = {}, pend = null, seenSync = {}, syncN = 0, applying = false, timer = null, inited = false;
-    var CH = 1400, FEN_PL = /^[rnbqkpRNBQKP1-8]{1,8}(\/[rnbqkpRNBQKP1-8]{1,8}){7}$/;
-    function rid() { return Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-3); }
-    function noop() {}
-    function peersList() { return room ? room.peers() : []; }
-    function teacherPeer() {
-      var ps = peersList();
-      for (var i = 0; i < ps.length; i++) { var p = ps[i]; if (!p.isMe && p.presence && p.presence.role === 't' && p.presence.live) return p; }
-      return null;
-    }
-    function active() { return !!room && (isT ? on : (follow && !!teacherPeer())); }
-    function blocked() {
-      if (!room || isT || !follow) return false;
-      var t = teacherPeer(); return !!(t && t.presence.locked);
-    }
-    function accept(msg) {
-      if (!room || msg.isMe) return false;
-      if (isT) {
-        if (!on) return false;
-        if (!locked) return true;
-        var p = peersList().filter(function (x) { return x.peer === msg.peer; })[0];
-        return !!(p && p.presence && p.presence.role === 't');
-      }
-      return follow && !!teacherPeer();
-    }
-    function nodePath(n) { var p = []; while (n.parent) { p.unshift(n.parent.kids.indexOf(n)); n = n.parent; } return p; }
-    function nodeAt(path) {
-      var n = S.root;
-      for (var i = 0; i < path.length && i < 1000; i++) { var k = n.kids[path[i]]; if (!k) break; n = k; }
-      return n;
-    }
-    function pub() {
-      if (!room) return;
-      room.presence({ role: isT ? 't' : 's', live: isT ? on : false, locked: isT ? locked : false, ne: isT ? noEng : false, sync: syncN }).catch(noop);
-    }
+  function role() { return backend ? backend.role() : 'none'; }
+  function studentIn() { return !!(session && session.state.role === 's' && session.state.open); }
+  function coachIn() { return !!(session && session.state.role === 'c' && session.state.open); }
 
-    function sendTree(keep) {
-      if (!active()) return;
-      if (!keep || !curTr) curTr = rid();
-      var mt = Core.toMovetext(S.root), it = S.item || {}, parts = [], n = Math.max(1, Math.ceil(mt.length / CH)), i;
-      for (i = 0; i < n; i++) parts.push(mt.slice(i * CH, (i + 1) * CH));
-      var title = String(it.title || 'Свободная доска').slice(0, 120), type = it.type === 'puzzle' ? 'puzzle' : 'game';
-      parts.forEach(function (str, idx) { room.emit('tree', { tr: curTr, i: idx, n: parts.length, s: str, fen: S.root.fen, type: type, title: title }).catch(noop); });
-    }
-    function sendCur() {
-      if (!active() || !curTr) return;
-      room.emit('cur', { tr: curTr, path: nodePath(S.cur), dw: drawPayload() }).catch(noop);
-    }
-    function resendAll() {
-      sendTree(true); sendCur();
-      if (getEditor() && getEditor().fen) setup({ open: true, fen: getEditor().fen() });
-    }
-    function treeChanged() {
-      if (applying || !active()) return;
-      if (!isT && !curTr) return;
-      sendTree(false); sendCur();
-    }
-    function curChanged() {
-      if (applying || !active()) return;
-      if (!curTr) { if (isT) { sendTree(false); } else return; }
-      sendCur();
-    }
-    function engineBlocked() {
-      if (!room || isT || !follow) return false;
-      var t = teacherPeer(); return !!(t && t.presence.ne);
-    }
-    function enforceEngine() {
-      if (engineBlocked() && S.engineOn) { S.engineOn = false; stopEngineRun(); S.engineLines = {}; renderEngine(); renderBoard(); renderNavState(); toast('Учитель отключил движок на время урока.'); }
-    }
-    function drawChanged() { if (applying || !active() || !curTr) return; sendCur(); }
-    function itemLoaded() {
-      if (!inited || applying) return;
-      if (isT) { if (on) { sendTree(false); sendCur(); } return; }
-      if (follow && teacherPeer()) { follow = false; syncN++; pub(); bar(); toast('Вы открыли свою запись и отключились от урока.'); }
-    }
-    function setup(d) { if (!active() && !(isT && on)) return; if (!room) return; room.emit('setup', d).catch(noop); }
+  // ------------------------------------------------------------ saving the lesson
+  function dateLabel(t) { var d = new Date(t); return ('0' + d.getDate()).slice(-2) + '.' + ('0' + (d.getMonth() + 1)).slice(-2) + '.' + d.getFullYear(); }
+  function storeSoon() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function () { if (session && lesson) lsSet(STORE_KEY, { id: lesson.id, role: lesson.role, snap: session.snapshot() }); }, 1500);
+  }
+  // docs of an earlier session of the same lesson (page reload, reconnection) + the current ones
+  function mergeSnap(a, b) {
+    if (!a) return b; if (!b) return a;
+    var byId = {};
+    a.docs.forEach(function (d) { byId[d.id] = d; });
+    b.docs.forEach(function (d) { byId[d.id] = d; });
+    var ids = a.docs.map(function (d) { return d.id; });
+    b.docs.forEach(function (d) { if (ids.indexOf(d.id) < 0) ids.push(d.id); });
+    var who = a.participants.slice();
+    b.participants.forEach(function (n) { if (who.indexOf(n) < 0) who.push(n); });
+    return { coach: b.coach || a.coach, participants: who, docs: ids.map(function (id) { return byId[id]; }) };
+  }
+  // Every record of the lesson goes to «Уроки» (format of «Записать партию»: headers, source 'live').
+  // The coach's games recorded during the lesson are already in «Мои партии» and stay there.
+  function saveSnap(snap, asCoach) {
+    var now = Date.now(), book = null, last = null, n = 0;
+    var who = cleanText((snap.participants || []).join(', '), 70);
+    (snap.docs || []).forEach(function (d) {
+      if (asCoach && d.recorded) return;
+      if (!d.mt && d.fen === Core.START) return;
+      var r = Core.parseMovetext(d.fen, d.mt || '');
+      book = ensureBook(S.books, LESSONS_BOOK, function () { return uid('b'); }, now).book;
+      var it = newGameItem({ id: uid('i'), now: now, fen: d.fen, source: 'live', headers: { Event: cleanText('Онлайн-урок' + (who ? ' · ' + who : ''), 80) } });
+      it.type = d.type === 'puzzle' ? 'puzzle' : 'game';
+      it.title = cleanText(d.title, 100) + ' · урок ' + dateLabel(now);
+      it.text = Core.toMovetext(r.root); it.plies = Core.mainLine(r.root).length;
+      it.recorded = false;
+      book.items.push(it); last = it; n++;
+    });
+    if (book) Store.put(JSON.parse(JSON.stringify(book)));
+    return { n: n, book: book, last: last };
+  }
 
-    function applyTree(tr, fen, type, title, mt) {
-      applying = true;
-      try {
-        curTr = tr;
-        stopEngineRun();
-        var r = Core.parseMovetext(fen, mt);
-        var item = { id: 'live', type: type, title: title, startFen: fen, text: mt, plies: Core.mainLine(r.root).length, result: '' };
-        S.item = item; S.root = r.root; S.cur = r.root; S.mode = 'analyse'; S.solve = null; S.sel = null; S.dots = []; S.hint = null; S.msg = null;
-        S.flipped = false;
-        if (pend && pend.tr === tr) applyCur(pend);
-        renderAll(); scheduleEngine();
-      } finally { applying = false; }
-    }
-    function applyCur(d) {
-      if (!Array.isArray(d.path)) return;
-      var path = d.path.filter(function (x) { return typeof x === 'number' && x >= 0 && x < 500; });
-      S.cur = nodeAt(path); S.sel = null; S.dots = []; S.hint = null; applyDraw(d.dw);
-    }
-    function onTree(m) {
-      var d = m.data;
-      if (!d || typeof d.tr !== 'string' || typeof d.s !== 'string' || !accept(m)) return;
-      if (d.tr === curTr && !buf[d.tr]) return;
-      var n = d.n | 0, i = d.i | 0;
-      if (n < 1 || n > 40 || i < 0 || i >= n) return;
-      if (Object.keys(buf).length > 6) buf = {};
-      var b = buf[d.tr] || (buf[d.tr] = { n: n, parts: [], got: 0, fen: String(d.fen || ''), type: d.type === 'puzzle' ? 'puzzle' : 'game', title: String(d.title || 'Урок').slice(0, 120) });
-      if (b.parts[i] === undefined) { b.parts[i] = d.s; b.got++; }
-      if (b.got < b.n) return;
-      delete buf[d.tr];
-      var pl = b.fen.split(' ')[0];
-      if (!FEN_PL.test(pl) || !new C().load(b.fen)) return;
-      applyTree(d.tr, b.fen, b.type, b.title, b.parts.join(''));
-    }
-    function onCur(m) {
-      var d = m.data;
-      if (!d || typeof d.tr !== 'string' || !accept(m)) return;
-      if (d.tr !== curTr) { pend = d; return; }
-      applying = true;
-      try { applyCur(d); renderAll(); scheduleEngine(); } finally { applying = false; }
-    }
-    function onSetup(m) {
-      var d = m.data;
-      if (!d || !accept(m)) return;
-      if (d.open) {
-        var f = String(d.fen || '').split(' '), pl = f[0];
-        if (!FEN_PL.test(pl)) return;
-        var full = pl + ' ' + (f[1] === 'b' ? 'b' : 'w') + ' ' + (/^[KQkq]{1,4}$/.test(f[2] || '') ? f[2] : '-') + ' - 0 1';
-        if (getEditor()) getEditor().setFen(full); else openEditor({ fen: full, live: true });
-      } else if (getEditor()) getEditor().close();
-    }
+  function finishLesson(reason, opts) {
+    opts = opts || {};
+    var s = session, l = lesson;
+    if (!s || !l) return;
+    session = null; lesson = null;
+    clearTimeout(saveTimer);
+    var stored = lsGet(STORE_KEY, null);
+    var snap = mergeSnap(stored && stored.id === l.id ? stored.snap : null, s.snapshot());
+    lsSet(STORE_KEY, null);
+    var r = saveSnap(snap, l.role === 'c');
+    if (l.role === 'c') backend.endLesson(l.id).catch(function () { /* ends by itself after 12 hours */ });
+    // the student keeps analysing the saved copy (the live board is not stored anywhere)
+    if (l.role === 's' && opts.loadCopy !== false && r.last && S.item && S.item.id === 'live') ctx.loadItem(r.book, r.last, true);
+    var where = r.n ? ' Ходы сохранены в книгу «' + LESSONS_BOOK + '».' : '';
+    if (reason === 'ended') toast((l.role === 'c' ? 'Урок закончен.' : 'Тренер закончил урок.') + where);
+    else if (reason === 'left') toast((leaveMsg || 'Вы вышли из урока.') + where);
+    leaveMsg = '';
+    ctx.renderAll();
+    bar();
+  }
 
-    // ---- панель ----
-    function bar() {
-      var el = $('#livebar'), btn = $('#btn-live');
-      if (!el) return;
-      // Outside claude.ai there is no live room: the lesson button is hidden (online lessons come in stage 5).
-      if (!inited) { btn.hidden = true; el.hidden = true; return; }
-      if (!room) { btn.hidden = true; el.hidden = true; return; }
-      var students = peersList().filter(function (p) { return !p.isMe && p.presence && p.presence.role === 's'; }).length;
-      var html = '', cls = '';
-      if (isT) {
-        btn.hidden = false; btn.textContent = on ? 'Закончить урок' : 'Начать урок'; btn.classList.toggle('primary', !on);
-        if (on) {
-          html = '<span class="dot-live"></span><strong>Урок идёт</strong><span>Учеников на странице: ' + students + '.' + (locked ? ' Ходите только вы.' : ' Двигать фигуры могут оба.') + '</span>' +
-            '<div class="ban-act"><button class="btn' + (locked ? ' on' : '') + '" data-live="lock" aria-pressed="' + locked + '">Только я</button><button class="btn' + (noEng ? ' on' : '') + '" data-live="noeng" aria-pressed="' + noEng + '" title="Ученик не сможет включить движок">' + (noEng ? 'Движок у ученика выключен' : 'Выключить движок ученику') + '</button></div>';
-        }
-      } else {
-        btn.hidden = true;
-        var t = teacherPeer();
-        if (t && follow) {
-          html = '<span class="dot-live"></span><strong>Идёт урок</strong><span>' + (t.presence.locked ? 'Сейчас ходит только учитель.' : 'Вы видите доску учителя и можете двигать фигуры вместе с ним.') + (t.presence.ne ? ' Движок отключён.' : '') + '</span>' +
-            '<div class="ban-act"><button class="btn" data-live="save">Сохранить себе</button><button class="btn" data-live="leave">Отключиться</button></div>';
-        } else if (t) {
-          html = '<strong>Идёт урок</strong><span>Вы отключены от доски учителя.</span><div class="ban-act"><button class="btn primary" data-live="join">Подключиться</button></div>';
-        }
-      }
-      el.hidden = !html; el.innerHTML = html;
-      enforceEngine(); var et = $('#engine-toggle'); if (et) et.disabled = engineBlocked();
-      renderNavState();
-    }
-    function saveLive() {
-      if (!S.item) return;
-      var book = S.books.filter(function (b) { return b.name === 'Уроки'; })[0];
-      if (!book) { book = { id: uid('b'), name: 'Уроки', created: Date.now(), items: [] }; S.books.push(book); }
-      var it = { id: uid('i'), type: S.item.type, title: S.item.title, startFen: S.item.startFen, text: Core.toMovetext(S.root), plies: Core.mainLine(S.root).length, result: '' };
-      book.items.push(it); Store.put(JSON.parse(JSON.stringify(book)));
-      toast('Сохранено в книгу «Уроки»'); renderLibrary();
-    }
-    function onBarClick(e) {
-      var b = e.target.closest('[data-live]'); if (!b) return;
-      var a = b.getAttribute('data-live');
-      if (a === 'lock') { locked = !locked; pub(); bar(); toast(locked ? 'Ученик пока смотрит, ходите только вы.' : 'Ученик снова может двигать фигуры.'); }
-      else if (a === 'noeng') { noEng = !noEng; pub(); bar(); toast(noEng ? 'Движок у ученика выключен.' : 'Ученик снова может включать движок.'); }
-      else if (a === 'leave') { follow = false; syncN++; pub(); bar(); }
-      else if (a === 'join') { follow = true; syncN++; pub(); bar(); }
-      else if (a === 'save') saveLive();
-    }
-    function toggleLesson() {
-      if (!inited) return;
-      if (!room) {
-        var m = openModal('<h3>Совместная работа</h3><p>Чтобы ученик двигал фигуры вместе с вами, оба открывают эту страницу, войдя в аккаунт Claude. Сейчас такой связи нет.</p>' +
-          '<ul class="help"><li>Откройте страницу из своего аккаунта Claude.</li><li>В меню «Поделиться» пригласите ученика по почте и дайте право «Участник» (Contributor). Ученику хватит бесплатного аккаунта.</li><li>Публичная ссылка без входа в аккаунт даёт только просмотр без живой связи.</li></ul>' +
-          '<div class="modal-act"><button class="btn primary" data-close>Понятно</button></div>');
-        return;
-      }
-      if (!isT) return;
-      on = !on; if (!on) { locked = false; noEng = false; }
-      pub(); bar();
-      if (on) { syncN++; pub(); curTr = ''; sendTree(false); sendCur(); toast('Урок начат. Ученики на странице увидят вашу доску.'); if (timer) clearInterval(timer); timer = setInterval(function () { if (on) resendAll(); }, 12000); }
-      else { if (timer) { clearInterval(timer); timer = null; } toast('Урок закончен.'); }
-    }
-    async function init() {
-      try { if (window.claude && window.claude.use) ctx.setDl(await window.claude.use('downloads')); } catch (e) { ctx.setDl(null); }
-      try {
-        if (window.claude && window.claude.use) {
-          user = await window.claude.use('user');
-          room = await window.claude.use('room');
-        }
-      } catch (e) { room = null; }
-      try { isT = user ? !!(await user.canEdit()) : false; } catch (e) { isT = false; }
-      inited = true;
-      var lb = $('#livebar'); lb.addEventListener('click', onBarClick);
-      $('#btn-live').addEventListener('click', toggleLesson);
-      if (room) {
-        room.on('tree', onTree, noop); room.on('cur', onCur, noop); room.on('setup', onSetup, noop);
-        room.onPeers(function (ch) {
-          if (isT && on) {
-            var need = false;
-            ch.joined.forEach(function (p) { if (!p.isMe) need = true; });
-            ch.updated.forEach(function (p) {
-              if (!p.isMe && p.presence && p.presence.sync && seenSync[p.peer] !== p.presence.sync) { seenSync[p.peer] = p.presence.sync; need = true; }
-            });
-            if (need) resendAll();
-          }
-          bar();
-        }, noop);
-        pub();
-      }
-      bar();
-    }
+  // ------------------------------------------------------------ hooks for the session
+  function isOwnItem() {
+    var it = S.item;
+    if (!it || it.recorded || it.source === 'live') return true;
+    return !!(S.book && !S.book.remote && OWN_BOOKS.indexOf(S.book.name) >= 0);
+  }
+  function hooks(asCoach) {
     return {
-      init: init, engineBlocked: engineBlocked, drawChanged: drawChanged, treeChanged: treeChanged, curChanged: curChanged, itemLoaded: itemLoaded, setup: setup, blocked: blocked,
-      isOn: function () { return !!room && (isT ? on : (follow && !!teacherPeer())); },
-      canSaveSetup: function () { return !room || isT || !active(); }
+      applied: function (kind) {
+        if (asCoach && kind === 'move') ctx.saveItem();
+        if (!asCoach && kind === 'state') { engineToastShown = false; if (window.innerWidth < 900) S.pane = 'board'; }
+        ctx.renderAll(); ctx.scheduleEngine();
+        storeSoon();
+      },
+      info: bar,
+      toast: toast,
+      engineOff: function () {
+        if (asCoach || !S.engineOn) return;
+        S.engineOn = false; ctx.stopEngineRun(); ctx.renderEngine(); ctx.renderBoard(); ctx.renderNavState();
+        if (!engineToastShown) { engineToastShown = true; toast('Тренер выключил движок на время урока.'); }
+      },
+      applyDraw: ctx.applyDraw,
+      drawPayload: ctx.drawPayload,
+      isOwnItem: isOwnItem,
+      ended: function (reason) { finishLesson(reason); }
     };
-  })();
+  }
 
-  return Live;
+  // ------------------------------------------------------------ coach
+  async function beginCoach(id) {
+    await backend.prepare();
+    var p = backend.profile();
+    if (S.mode === 'solve') { S.mode = 'analyse'; S.solve = null; S.hint = null; }
+    lesson = { id: id, role: 'c' };
+    session = createLessonSession({ role: 'c', transport: backend.transport(id), S: S, me: { k: 'coach', n: p.display_name || 'Тренер' }, coachName: p.display_name || 'Тренер', hooks: hooks(true) });
+    await session.start();
+    ctx.renderAll(); bar();
+  }
+  function openStart() {
+    var m = openModal('<h3>Онлайн-урок</h3><div id="lv-body"><p class="hint-note">Загружаю учеников…</p></div>' +
+      '<div class="modal-act"><button class="btn" data-close>Отмена</button><button class="btn primary" id="lv-go" disabled>Начать урок</button></div>');
+    var body = m.el.querySelector('#lv-body'), go = m.el.querySelector('#lv-go');
+    backend.listStudents().then(function (list) {
+      list = list || [];
+      if (!list.length) { body.innerHTML = '<p class="status warn">Учеников пока нет. Добавьте их в «Аккаунт → Добавить ученика».</p>'; return; }
+      body.innerHTML = '<p class="hint-note">Кого позвать на урок? Им придёт приглашение в приложении. Ученики увидят вашу доску: ходы, варианты, стрелки и ваши комментарии. Текст книг не отправляется.</p>' +
+        '<div class="lv-pick">' + list.map(function (s) {
+          return '<label class="chk"><input type="checkbox" data-s="' + esc(s.id) + '"' + (s.bound_at !== null ? ' checked' : '') + '> ' + esc(s.nick) + (s.bound_at ? '' : ' <span class="hint-note">(ещё не вошёл)</span>') + '</label>';
+        }).join('') + '</div><p id="lv-st" class="status"></p>';
+      go.disabled = false;
+    }).catch(function (e) { body.innerHTML = '<p class="status bad">' + esc(lessonsMissing(e) ? NOT_ENABLED : 'Нет связи с облаком. Проверьте интернет.') + '</p>'; });
+    go.addEventListener('click', async function () {
+      var ids = Array.prototype.filter.call(body.querySelectorAll('[data-s]'), function (c) { return c.checked; }).map(function (c) { return c.getAttribute('data-s'); });
+      var st = body.querySelector('#lv-st');
+      if (!ids.length) { st.className = 'status bad'; st.textContent = 'Выберите хотя бы одного ученика.'; return; }
+      go.disabled = true; st.className = 'status'; st.textContent = 'Начинаю…';
+      try {
+        var r = await backend.startLesson(ids);
+        if (!r || !r.ok) { st.className = 'status bad'; st.textContent = r && r.error === 'not_found' ? 'Ученик не найден. Обновите список.' : 'Не удалось начать урок.'; go.disabled = false; return; }
+        m.close();
+        await beginCoach(r.lesson_id);
+        toast('Урок начат. Приглашённые ученики увидят «Присоединиться».');
+      } catch (e) {
+        st.className = 'status bad'; st.textContent = lessonsMissing(e) ? NOT_ENABLED : 'Нет связи с облаком. Проверьте интернет.'; go.disabled = false;
+      }
+    });
+  }
+
+  // ------------------------------------------------------------ student
+  async function join() {
+    if (!offer || session) return;
+    try { await backend.prepare(); } catch (e) { toast('Нет связи с облаком. Проверьте интернет.'); return; }
+    var p = backend.profile();
+    lesson = { id: offer.lesson_id, role: 's' };
+    session = createLessonSession({ role: 's', transport: backend.transport(offer.lesson_id), S: S, me: { k: p.student_id || 'student', n: p.nick || 'Ученик' }, coachName: offer.coach_name || '', hooks: hooks(false) });
+    await session.start();
+    bar();
+  }
+  async function poll() {
+    if (!backend || polling) return;
+    var r = role();
+    if (r !== 'student' && r !== 'coach') { offer = null; resume = null; bar(); return; }
+    polling = true;
+    try {
+      if (r === 'student') {
+        offer = await backend.myLiveLesson();
+        // the lesson ended while we did not hear it (no network): save what we have
+        if (studentIn() && (!offer || offer.lesson_id !== lesson.id)) session.end();
+        var stored = lsGet(STORE_KEY, null);
+        if (stored && stored.role === 's' && !session && (!offer || offer.lesson_id !== stored.id)) {
+          var res = saveSnap(stored.snap, false); lsSet(STORE_KEY, null);
+          if (res.n) { toast('Прошлый урок сохранён в книгу «' + LESSONS_BOOK + '».'); ctx.renderAll(); }
+        }
+      } else if (!session) {
+        resume = await backend.myCoachLesson();
+      }
+    } catch (e) { /* offline or the cloud is not updated yet: no lesson */ }
+    finally { polling = false; }
+    bar();
+  }
+
+  // ------------------------------------------------------------ the panel
+  function names(list, r) {
+    var out = [];
+    list.forEach(function (m) { if (m.r === r && out.indexOf(m.n) < 0) out.push(m.n); });
+    return out;
+  }
+  function bar() {
+    var el = $('#livebar'), btn = $('#btn-live');
+    if (!el || !btn) return;
+    var r = role(), html = '';
+    btn.hidden = !(r === 'coach' && inited);
+    btn.textContent = coachIn() ? 'Закончить урок' : 'Начать урок';
+    btn.classList.toggle('primary', !coachIn());
+    if (coachIn()) {
+      var s = session.state, kids = names(s.members, 's');
+      var net = s.status === 'denied' ? ' Нет доступа к каналу урока: проверьте настройки облака.' : s.status !== 'online' ? ' Нет связи, переподключаюсь…' : '';
+      html = '<span class="dot-live"></span><strong>Урок идёт</strong><span class="lv-who">' + (kids.length ? 'В уроке: ' + esc(kids.join(', ')) + '.' : 'Ученики ещё не подключились.') + esc(net) + '</span>' +
+        '<div class="ban-act lv-act"><span class="seg lv-seg" role="group" aria-label="Кто двигает фигуры"><span class="lv-lbl">Двигает:</span>' +
+        '<button class="btn' + (s.lock ? ' on' : '') + '" data-live="lock" aria-pressed="' + s.lock + '">только тренер</button>' +
+        '<button class="btn' + (!s.lock ? ' on' : '') + '" data-live="unlock" aria-pressed="' + !s.lock + '">тренер и ученики</button></span>' +
+        '<button class="btn' + (s.eng ? ' on' : '') + '" data-live="eng" aria-pressed="' + s.eng + '">' + (s.eng ? 'Движок у учеников: разрешён' : 'Движок у учеников: выключен') + '</button>' +
+        '<button class="btn" data-live="end">Закончить урок</button></div>';
+    } else if (studentIn()) {
+      var t = session.state, msg = [];
+      if (!t.synced) msg.push('Загружаю доску тренера…');
+      msg.push(t.lock ? 'Сейчас ходит только тренер.' : 'Можно ходить вместе с тренером.');
+      if (!t.eng) msg.push('Движок выключен тренером.');
+      if (t.status === 'denied') msg.push('Нет доступа к уроку.');
+      else if (t.status !== 'online') msg.push('Нет связи, переподключаюсь…');
+      else if (!t.coachHere) msg.push('Тренер сейчас не на связи.');
+      html = '<span class="dot-live"></span><strong>Идёт урок' + (t.coach ? ' · ' + esc(t.coach) : '') + '</strong><span class="lv-who">' + esc(msg.join(' ')) + '</span>' +
+        '<div class="ban-act"><button class="btn" data-live="leave">Выйти из урока</button></div>';
+    } else if (r === 'student' && offer) {
+      html = '<span class="dot-live"></span><strong>Тренер' + (offer.coach_name ? ' ' + esc(cleanText(offer.coach_name, 60)) : '') + ' начал урок</strong><span>Его доска появится у вас на экране.</span>' +
+        '<div class="ban-act"><button class="btn primary" data-live="join">Присоединиться</button></div>';
+    } else if (r === 'coach' && resume) {
+      html = '<strong>Урок не закончен</strong><span>Продолжите его или закончите для всех.</span>' +
+        '<div class="ban-act"><button class="btn primary" data-live="resume">Продолжить урок</button><button class="btn" data-live="endold">Закончить</button></div>';
+    }
+    el.hidden = !html; el.innerHTML = html;
+    var et = $('#engine-toggle'); if (et) et.disabled = engineBlocked();
+    ctx.renderNavState();
+  }
+  async function onBarClick(e) {
+    var b = e.target.closest('[data-live]'); if (!b) return;
+    var a = b.getAttribute('data-live');
+    if (a === 'lock' || a === 'unlock') {
+      if (!coachIn()) return;
+      session.setMode({ lock: a === 'lock' }); bar();
+      toast(a === 'lock' ? 'Ходит только тренер.' : 'Ученики тоже могут двигать фигуры.');
+    } else if (a === 'eng') {
+      if (!coachIn()) return;
+      session.setMode({ eng: !session.state.eng }); bar();
+      toast(session.state.eng ? 'Ученики могут включить движок.' : 'Движок у учеников выключен.');
+    } else if (a === 'end') { if (coachIn()) session.end(); }
+    else if (a === 'leave') { if (studentIn()) session.end(); }
+    else if (a === 'join') { join().catch(function () { toast('Не удалось подключиться к уроку.'); }); }
+    else if (a === 'resume') {
+      var id = resume && resume.lesson_id; resume = null;
+      if (id) beginCoach(id).then(function () { toast('Урок продолжается.'); }).catch(function () { toast('Не удалось продолжить урок.'); });
+    } else if (a === 'endold') {
+      var old = resume; resume = null; bar();
+      if (old) {
+        backend.endLesson(old.lesson_id).catch(function () {});
+        var stored = lsGet(STORE_KEY, null);
+        if (stored && stored.id === old.lesson_id) { saveSnap(stored.snap, true); lsSet(STORE_KEY, null); ctx.renderAll(); }
+        toast('Урок закончен.');
+      }
+    }
+  }
+  function toggleLesson() {
+    if (role() !== 'coach') return;
+    if (coachIn()) session.end(); else openStart();
+  }
+
+  // ------------------------------------------------------------ app hooks
+  function blocked() { return studentIn() && (session.state.lock || !session.state.synced); }
+  function editBlocked() { return studentIn(); }
+  function engineBlocked() { return studentIn() && !session.state.eng; }
+  function setBackend(b) {
+    backend = b;
+    if (b.onRole) b.onRole(function () { poll(); bar(); });
+    bar(); poll();
+  }
+
+  function init() {
+    // claude.ai file saving (the prototype ran there); elsewhere a normal download is used
+    try { if (window.claude && window.claude.use) window.claude.use('downloads').then(ctx.setDl, function () { ctx.setDl(null); }); } catch (e) { ctx.setDl(null); }
+    inited = true;
+    $('#livebar').addEventListener('click', onBarClick);
+    $('#btn-live').addEventListener('click', toggleLesson);
+    var t = window.__tetradLiveTest;
+    if (t && typeof t === 'object' && t.bus) { t.poll = poll; setBackend(testBackend(t)); }
+    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') poll(); });
+    window.addEventListener('online', function () { poll(); if (studentIn()) session.resync(); });
+    pollTimer = setInterval(function () { if (document.visibilityState === 'visible' && !coachIn()) poll(); }, POLL_MS);
+    bar();
+  }
+
+  return {
+    init: init,
+    setCloud: function (cloud) { if (!backend && cloud) setBackend(cloudBackend(cloud)); },
+    engineBlocked: engineBlocked,
+    blocked: blocked,
+    editBlocked: editBlocked,
+    isOn: function () { return coachIn() || (studentIn() && session.state.synced); },
+    canSaveSetup: function () { return !studentIn(); },
+    setup: function () { /* the position editor is not mirrored; a saved position opens as a new record and is sent */ },
+    treeChanged: function () { if (coachIn()) session.treeChanged(); },
+    curChanged: function () { if (session) session.curChanged(); },
+    drawChanged: function () { if (coachIn()) session.curChanged(); },
+    flipChanged: function () { if (coachIn()) session.flipChanged(); },
+    itemLoaded: function () {
+      if (!inited) return;
+      if (coachIn()) { session.docChanged(); bar(); return; }
+      if (studentIn()) { leaveMsg = 'Вы открыли свою запись и вышли из урока (вернуться — «Присоединиться»).'; session.end(); }
+    },
+    // the student's move during the lesson is a request to the coach
+    interceptMove: function (mv) {
+      if (!studentIn()) return false;
+      if (!session.proposeMove(mv)) toast('Сейчас ходит только тренер.');
+      return true;
+    },
+    _poll: poll,
+    _pollTimer: function () { return pollTimer; }
+  };
 }

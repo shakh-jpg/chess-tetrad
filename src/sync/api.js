@@ -97,6 +97,18 @@ export function createApi(client, opts) {
       if (r[0].error && /allow_solution/.test(r[0].error.message || '')) r[0] = await client.from('sets').select('id, title, source, created_at, ' + items);
       return { sets: unwrap(r[0]) || [], progress: unwrap(r[1]) || [] };
     },
-    pushProgress: function (rows) { return rpc('push_progress', { p_rows: rows }); }
+    pushProgress: function (rows) { return rpc('push_progress', { p_rows: rows }); },
+
+    // ---- online lesson (migration 20261118000001) ----
+    startLesson: function (studentIds) { return rpc('start_lesson', { p_students: studentIds }); },
+    endLesson: function (lessonId) { return rpc('end_lesson', { p_lesson: lessonId }); },
+    // student: { lesson_id, coach_name, started_at } or null
+    myLiveLesson: function () { return rpc('my_live_lesson', {}); },
+    // coach: the lesson that is still running (after a page reload), or null
+    myCoachLesson: async function () {
+      var since = new Date(Date.now() - 12 * 3600 * 1000).toISOString();
+      var rows = unwrap(await client.from('lessons').select('id, students, started_at').eq('status', 'live').gt('started_at', since).order('started_at', { ascending: false }).limit(1));
+      return rows && rows[0] ? { lesson_id: rows[0].id, students: rows[0].students, started_at: rows[0].started_at } : null;
+    }
   };
 }

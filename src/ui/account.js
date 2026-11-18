@@ -15,7 +15,8 @@ export function initAccount(ctx) {
   var noop = { onProgress: function () {} };
   if (!CONFIG.enabled || !btn) return noop;
   btn.hidden = false;
-  var esc = ctx.esc, api = null, sync = null, readyP = null, lastAuto = 0;
+  var esc = ctx.esc, api = null, sync = null, readyP = null, lastAuto = 0, client = null, roleListeners = [];
+  function roleChanged() { roleListeners.forEach(function (f) { try { f(sync ? sync.state.role : 'none'); } catch (e) { /* a listener must not break sync */ } }); }
 
   function putBook(book) {
     var i = ctx.S.books.findIndex(function (b) { return b.id === book.id; });
@@ -29,12 +30,17 @@ export function initAccount(ctx) {
 
   function ensure() {
     if (!readyP) {
-      readyP = loadClient().then(function (client) {
+      readyP = loadClient().then(function (c) {
+        client = c;
         api = createApi(client, { redirectTo: location.origin + location.pathname });
         sync = createSync({
           api: api, queue: createQueue(localStorageBackend('st.syncq')),
           getBooks: function () { return ctx.S.books; }, putBook: putBook, onChange: ctx.renderAll
         });
+        // the online lesson (live/live.js) follows the role: coach / student / signed out
+        var refresh = sync.refreshRole, syncNow = sync.syncNow;
+        sync.refreshRole = async function () { var r = await refresh(); roleChanged(); return r; };
+        sync.syncNow = async function () { var r = await syncNow(); roleChanged(); return r; };
         return sync;
       }).catch(function (e) { readyP = null; throw e; });
     }
@@ -215,7 +221,7 @@ export function initAccount(ctx) {
       '<p class="hint-note">«Новый код» нужен, если ученик сменил телефон или потерял код. Код одноразовый и действует 7 дней. «Удалить» стирает ученика и весь его прогресс из облака.</p>';
     var panel = body.querySelector('#acc-panel');
     body.querySelector('#acc-refresh').addEventListener('click', function () { renderCoach(m, body); });
-    body.querySelector('#acc-out').addEventListener('click', async function () { await api.signOut(); ctx.lsSet('st.cloud', false); renderSignedOut(m, body); });
+    body.querySelector('#acc-out').addEventListener('click', async function () { await api.signOut(); ctx.lsSet('st.cloud', false); sync.state.role = 'none'; sync.state.profile = null; roleChanged(); renderSignedOut(m, body); });
     body.querySelector('#acc-add').addEventListener('click', function () {
       panel.innerHTML = '<div class="acc-card"><label class="fld">Ник ученика (без фамилии)<input id="acc-nick" type="text" maxlength="40" placeholder="Например: Арман"></label><button class="btn primary" id="acc-create">Создать и показать код</button><p id="acc-create-st" class="status"></p></div>';
       panel.querySelector('#acc-create').addEventListener('click', async function () {
@@ -322,6 +328,13 @@ export function initAccount(ctx) {
     onProgress: function (book, item) {
       if (!isRemoteBook(book)) return;
       ensure().then(function (s) { s.onProgress(book, item); }).catch(function () {});
+    },
+    // for the online lesson
+    cloud: {
+      ready: function () { return ensure().then(function () { return { api: api, client: client }; }); },
+      role: function () { return sync ? sync.state.role : 'none'; },
+      profile: function () { return sync ? sync.state.profile : null; },
+      onRole: function (cb) { roleListeners.push(cb); }
     }
   };
 }

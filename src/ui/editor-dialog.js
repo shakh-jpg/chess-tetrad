@@ -74,7 +74,7 @@ export function createEditorDialog(ctx) {
     setTool('wP');
     $('#palette', m.el).addEventListener('click', function (e) { var b = e.target.closest('.pal'); if (b && b.id !== 'pe-clear-all') setTool(b.getAttribute('data-t')); });
     boardEl.addEventListener('pointerdown', function (e) {
-      if (Live.blocked()) { toast('Сейчас ходит только учитель.'); return; }
+      if (Live.blocked()) { toast('Сейчас ходит только тренер.'); return; }
       var svg = $('svg', boardEl), sq = sqFromEvent(svg, e, E.flipped); if (!sq) return;
       if (E.tool === 'x' || E.cells[sq] === E.tool) delete E.cells[sq]; else E.cells[sq] = E.tool;
       delete E.low[sq]; autoCastle(); sync();

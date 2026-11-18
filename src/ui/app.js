@@ -51,15 +51,15 @@ import { solutionLocked } from '../sync/model.js';
     renderAll(); scheduleEngine();
     Live.itemLoaded();
   }
-  function persist() {
+  function saveItem() {
     if (S.item) {
       S.item.text = Core.toMovetext(S.root);
       S.item.plies = Core.mainLine(S.root).length;
       // recorded games are written at once (closing the tab right after a move must not lose it)
       if (S.item.id !== 'live' && S.book) { if (S.item.recorded) Store.put(JSON.parse(JSON.stringify(S.book))); else Store.save(S.book); }
     }
-    Live.treeChanged();
   }
+  function persist() { saveItem(); Live.treeChanged(); }
 
   // ================= игра: ходы =================
   function legalMoves(fen, from) {
@@ -93,6 +93,8 @@ import { solutionLocked } from '../sync/model.js';
   }
   function doMove(mv) {
     if (S.mode === 'solve' && S.solve && !S.solve.done) return solveMove(mv);
+    // online lesson: a student's move is a request; the coach's board decides
+    if (Live.interceptMove(mv)) { S.sel = null; S.dots = []; renderBoard(); return; }
     var res = Core.tryMove(S.cur, mv);
     if (!res) return;
     S.cur = res.node; S.sel = null; S.dots = []; S.hint = null;
@@ -186,7 +188,7 @@ import { solutionLocked } from '../sync/model.js';
   // ================= навигация =================
   function go(node) {
     if (!node) return;
-    if (Live.blocked()) { toast('Сейчас ходит только учитель.'); return; }
+    if (Live.blocked()) { toast('Сейчас ходит только тренер.'); return; }
     S.cur = node; S.sel = null; S.dots = []; S.hint = null; renderAll(); scheduleEngine(); Live.curChanged();
   }
   function goPrev() { if (S.mode === 'solve' && !S.solve.done) return; if (S.cur.parent) go(S.cur.parent); }
@@ -194,11 +196,11 @@ import { solutionLocked } from '../sync/model.js';
   function goStart() { if (S.mode === 'solve' && !S.solve.done) return; go(S.root); }
   function goEnd() { if (S.mode === 'solve' && !S.solve.done) return; var n = S.cur; while (n.kids[0]) n = n.kids[0]; go(n); }
   function deleteFromHere() {
-    if (!S.cur.parent || Live.blocked()) return;
+    if (!S.cur.parent || Live.editBlocked()) return;
     var p = S.cur.parent; Core.removeNode(S.cur); S.cur = p; persist(); renderAll(); scheduleEngine();
   }
   function promoteVariation() {
-    if (!S.cur.parent || Live.blocked()) return;
+    if (!S.cur.parent || Live.editBlocked()) return;
     var n = S.cur; while (n.parent && n.parent.kids[0] === n) n = n.parent;
     if (n.parent) { Core.promoteNode(n); persist(); renderAll(); }
   }
@@ -282,7 +284,7 @@ import { solutionLocked } from '../sync/model.js';
     var lock = S.mode === 'solve' && S.solve && !S.solve.done;
     var lb = Live.blocked();
     ['first', 'prev', 'next', 'last'].forEach(function (a) { var el = $('[data-nav="' + a + '"]'); if (el) el.disabled = lock || lb; });
-    var eb = $('#engine-toggle'); if (eb) { eb.disabled = false; eb.classList.toggle('dim', lock || Live.engineBlocked()); eb.title = Live.engineBlocked() ? 'Учитель отключил движок на время урока' : (lock ? 'Движок недоступен, пока вы решаете задачу' : ''); eb.setAttribute('aria-pressed', S.engineOn ? 'true' : 'false'); eb.classList.toggle('on', S.engineOn); eb.textContent = S.engineOn ? 'Выключить' : 'Включить'; }
+    var eb = $('#engine-toggle'); if (eb) { eb.disabled = false; eb.classList.toggle('dim', lock || Live.engineBlocked()); eb.title = Live.engineBlocked() ? 'Тренер выключил движок на время урока' : (lock ? 'Движок недоступен, пока вы решаете задачу' : ''); eb.setAttribute('aria-pressed', S.engineOn ? 'true' : 'false'); eb.classList.toggle('on', S.engineOn); eb.textContent = S.engineOn ? 'Выключить' : 'Включить'; }
     var tools = $('#movetools'); if (tools) tools.hidden = lock;
     var rec = $('#recbar'); if (rec) rec.hidden = !(S.item && S.item.recorded);
   }
@@ -346,7 +348,7 @@ import { solutionLocked } from '../sync/model.js';
   }
   function toggleEngine() {
     if (!S.engineOn && S.mode === 'solve' && S.solve && !S.solve.done) { toast(lockedNow() ? 'Движок откроется, когда задача будет решена.' : 'Движок недоступен, пока вы решаете задачу. Нажмите «Показать решение» или «Свободный анализ».'); return; }
-    if (!S.engineOn && Live.engineBlocked()) { toast('Учитель отключил движок на время урока.'); return; }
+    if (!S.engineOn && Live.engineBlocked()) { toast('Тренер выключил движок на время урока.'); return; }
     S.engineOn = !S.engineOn;
     if (S.engineOn) {
       S.engineKind = Engine.kind; renderEngine();
@@ -356,7 +358,7 @@ import { solutionLocked } from '../sync/model.js';
     renderNavState();
   }
   function addPvLine(idx) {
-    var l = S.engineLines[idx]; if (!l || Live.engineBlocked()) return;
+    var l = S.engineLines[idx]; if (!l || Live.engineBlocked() || Live.editBlocked()) return;
     var g = new C(S.cur.fen), node = S.cur, first = null;
     for (var i = 0; i < l.pv.length && i < 8; i++) {
       var u = l.pv[i], m = g.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u[4] });
@@ -382,17 +384,17 @@ import { solutionLocked } from '../sync/model.js';
     var show = !!(S.cur && S.cur.parent) && !(S.mode === 'solve' && S.solve && !S.solve.done);
     pn.hidden = !show; if (!show) return;
     $$('[data-nag]', pn).forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-nag') === (S.cur.nag || '')); });
-    var ta = $('#cmtext'); if (ta) { if (document.activeElement !== ta) ta.value = S.cur.comment || ''; ta.disabled = Live.blocked(); }
+    var ta = $('#cmtext'); if (ta) { if (document.activeElement !== ta) ta.value = S.cur.comment || ''; ta.disabled = Live.editBlocked(); }
   }
   var cmTimer = null;
   function onCmInput(e) {
-    if (Live.blocked() || !S.cur.parent) return;
+    if (Live.editBlocked() || !S.cur.parent) return;
     var node = S.cur, v = e.target.value.replace(/[{}]/g, '').replace(/\s+/g, ' ');
     node.comment = v.trim();
     clearTimeout(cmTimer); cmTimer = setTimeout(function () { persist(); renderMoves(); }, 350);
   }
   function setNag(v) {
-    if (Live.blocked() || !S.cur.parent) return;
+    if (Live.editBlocked() || !S.cur.parent) return;
     if (S.cur.nag === v) delete S.cur.nag; else S.cur.nag = v;
     persist(); renderMoves(); renderCm();
   }
@@ -473,7 +475,7 @@ import { solutionLocked } from '../sync/model.js';
     host.addEventListener('pointerdown', function (e) {
       var svg = $('svg', host); if (!svg) return;
       if (e.button === 2 || (S.drawMode && e.button === 0)) {
-        if (Live.blocked()) { toast('Сейчас рисует только учитель.'); return; }
+        if (Live.editBlocked()) { toast('На уроке рисует только тренер.'); return; }
         var q0 = sqFromEvent(svg, e, S.flipped); if (!q0) return;
         S.dw = { from: q0, to: null }; try { host.setPointerCapture(e.pointerId); } catch (x) {}
         e.preventDefault(); return;
@@ -482,7 +484,7 @@ import { solutionLocked } from '../sync/model.js';
       var sq = sqFromEvent(svg, e, S.flipped); if (!sq) return;
       var map = fenToMap(S.cur.fen), side = userSide();
       if (S.mode === 'solve' && S.solve && (S.solve.busy)) return;
-      if (Live.blocked()) { toast('Сейчас ходит только учитель.'); return; }
+      if (Live.blocked()) { toast('Сейчас ходит только тренер.'); return; }
       if (S.sel && S.sel !== sq && attemptMove(S.sel, sq)) { e.preventDefault(); return; }
       if (map[sq] && map[sq][0] === side && canMoveNow()) {
         S.sel = sq;
@@ -538,7 +540,7 @@ import { solutionLocked } from '../sync/model.js';
       else if (e.key === 'ArrowRight') { goNext(); e.preventDefault(); }
       else if (e.key === 'Home') { goStart(); e.preventDefault(); }
       else if (e.key === 'End') { goEnd(); e.preventDefault(); }
-      else if (e.key === 'f' || e.key === 'а') { S.flipped = !S.flipped; renderBoard(); }
+      else if (e.key === 'f' || e.key === 'а') { S.flipped = !S.flipped; renderBoard(); Live.flipChanged(); }
     });
     $('#layout').addEventListener('click', function (e) {
       var a;
@@ -570,7 +572,7 @@ import { solutionLocked } from '../sync/model.js';
         var act = a.getAttribute('data-act');
         if (act === 'hint') hintSolve(); else if (act === 'solution') showSolution();
         else if (act === 'analyse') toAnalysis(); else if (act === 'resetsolve') resetSolve();
-        else if (act === 'nextpuzzle') nextPuzzle(); else if (act === 'skip') skipPuzzle(); else if (act === 'flip') { S.flipped = !S.flipped; renderBoard(); }
+        else if (act === 'nextpuzzle') nextPuzzle(); else if (act === 'skip') skipPuzzle(); else if (act === 'flip') { S.flipped = !S.flipped; renderBoard(); Live.flipChanged(); }
         else if (act === 'delmove') deleteFromHere(); else if (act === 'promote') promoteVariation();
         else if (act === 'copyfen') copyText(S.cur.fen, 'FEN скопирован');
         else if (act === 'cleardraw') clearDraw();
@@ -610,7 +612,7 @@ import { solutionLocked } from '../sync/model.js';
 
   // ================= совместная работа (урок): live/live.js =================
   var Live = createLive({
-    S: S, toast: toast, openModal: openModal, openEditor: openEditor,
+    S: S, toast: toast, openModal: openModal, openEditor: openEditor, loadItem: loadItem, saveItem: saveItem,
     renderAll: renderAll, renderBoard: renderBoard, renderEngine: renderEngine,
     renderNavState: renderNavState, renderLibrary: renderLibrary,
     scheduleEngine: scheduleEngine, stopEngineRun: stopEngineRun,
@@ -659,6 +661,9 @@ export function start() {
   }
   return init();
 }
+
+// Stage 5: the online lesson uses the cloud account (role, API, Realtime client).
+export function setLiveCloud(cloud) { Live.setCloud(cloud); }
 
 // Stage 4: hook for the cloud sync (called after a puzzle result is recorded locally).
 var progressHook = null;
