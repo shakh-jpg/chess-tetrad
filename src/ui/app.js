@@ -246,7 +246,7 @@ import { solutionLocked } from '../sync/model.js';
   function renderMoves() {
     var host = $('#moves'); if (!host) return;
     S.nodes = {};
-    var limit = null;
+    var limit;
     if (S.mode === 'solve' && S.solve && !S.solve.done) {
       limit = {}; var n = S.cur; while (n) { limit[n.id] = 1; n = n.parent; }
     } else limit = Live.visibleIds(); // lesson, solution hidden: the coach sees what the students see
