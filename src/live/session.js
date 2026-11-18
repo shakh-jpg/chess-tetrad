@@ -20,9 +20,11 @@ export function createLessonSession(o) {
   var S = o.S, T = o.transport, H = o.hooks, isCoach = o.role === 'c';
   var st = {
     role: o.role, status: 'connecting', open: false, members: [], coachHere: false,
-    lock: true, eng: false, rev: 0, doc: null, synced: false, coach: o.coachName || '', ended: false
+    lock: true, eng: false, hide: false, rev: 0, doc: null, synced: false, coach: o.coachName || '', ended: false
   };
   var mirror = null, lastMt = '', bookComments = null, applying = false;
+  // "Решение: скрыто": nodes present when the record was opened, and the copy last sent
+  var original = {}, view = null;
   var docs = {}, order = [], seen = {};
   var curTimer = null, stateTimer = null, lastState = 0, lastHello = 0;
   if (o.me && o.me.n) seen[o.me.n] = true;
@@ -39,8 +41,31 @@ export function createLessonSession(o) {
   }
 
   // ------------------------------------------------------------ coach
+  // what the students get: the whole tree, or (solution hidden) only the visible part of it
+  function project() {
+    view = P.projectTree(S.root, { bookComments: bookComments, visible: st.hide ? P.visibleIds(S.root, S.cur, original) : null });
+    return Core.toMovetext(view.root);
+  }
+  function curPath() {
+    if (st.hide && view && view.map[S.cur.id]) return P.nodePath(view.map[S.cur.id]);
+    return P.nodePath(S.cur);
+  }
+  // a path from a student (in the tree the student has) -> the coach's node
+  function resolve(path) {
+    if (!st.hide) return P.nodeAt(S.root, path);
+    var n = view && P.nodeAt(view.root, path);
+    return n ? n.orig : null;
+  }
   function statePayload() {
-    return { doc: st.doc, rev: st.rev, mt: lastMt, cur: P.nodePath(S.cur), dw: draw(), lock: st.lock, eng: st.eng, flip: !!S.flipped, coach: st.coach };
+    return { doc: st.doc, rev: st.rev, mt: lastMt, cur: curPath(), dw: draw(), lock: st.lock, eng: st.eng, flip: !!S.flipped, hide: st.hide, coach: st.coach };
+  }
+  // solution hidden: navigation changes what is visible, so every change sends the visible tree
+  function hiddenSync() {
+    var mt = project();
+    if (mt.length > P.LIMITS.bigMsg - 2000) return;
+    if (mt === lastMt) { T.sendCoach('cur', { d: st.doc.id, rev: st.rev, path: curPath(), dw: draw() }); return; }
+    st.rev++; lastMt = mt; mirror = null;
+    T.sendCoach('tree', { d: st.doc.id, rev: st.rev, mt: mt, cur: curPath(), dw: draw() });
   }
   function sendState() {
     clearTimeout(stateTimer); stateTimer = null; lastState = Date.now();
@@ -60,15 +85,19 @@ export function createLessonSession(o) {
     addDoc(st.doc, { recorded: !!(it && it.recorded), mt: Core.toMovetext(S.root) });
     // a book's own comments are not sent to students (only the coach's)
     bookComments = H.isOwnItem && H.isOwnItem() ? null : P.collectComments(S.root);
-    lastMt = P.lessonMovetext(S.root, bookComments);
+    // a record with moves ahead (a puzzle with its solution, a game): the solution starts hidden
+    original = P.allIds(S.root);
+    st.hide = S.cur.kids.length > 0;
+    lastMt = project();
     if (lastMt.length > P.LIMITS.bigMsg - 2000) { H.toast('Запись слишком большая для урока: ученики увидят только позицию.'); lastMt = ''; }
-    mirror = P.parseTree(st.doc.fen, lastMt);
+    mirror = st.hide ? null : P.parseTree(st.doc.fen, lastMt);
     st.rev++;
     sendState();
   }
   function treeChanged() {
     if (!isCoach || !st.open || applying || !st.doc) return;
-    var mt = P.lessonMovetext(S.root, bookComments);
+    if (st.hide) { clearTimeout(curTimer); hiddenSync(); return; }
+    var mt = project();
     if (mt === lastMt) { curChanged(); return; }
     if (mt.length > P.LIMITS.bigMsg - 2000) return;
     st.rev++;
@@ -90,7 +119,10 @@ export function createLessonSession(o) {
     if (!st.open || applying || !st.doc) return;
     if (isCoach) {
       clearTimeout(curTimer);
-      curTimer = setTimeout(function () { if (st.open && st.doc) T.sendCoach('cur', { d: st.doc.id, rev: st.rev, path: P.nodePath(S.cur), dw: draw() }); }, 60);
+      curTimer = setTimeout(function () {
+        if (!st.open || !st.doc) return;
+        if (st.hide) hiddenSync(); else T.sendCoach('cur', { d: st.doc.id, rev: st.rev, path: P.nodePath(S.cur), dw: draw() });
+      }, 60);
     } else if (st.synced && !st.lock) {
       T.sendStudent('go', { d: st.doc.id, rev: st.rev, at: P.nodePath(S.cur) });
     }
@@ -102,7 +134,7 @@ export function createLessonSession(o) {
     if (m.t === 'hello') { scheduleState(); return; }
     // the coach decides: requests only when students may move, and only for the current version
     if (st.lock || m.d !== st.doc.id || m.rev !== st.rev) return;
-    var at = P.nodeAt(S.root, m.at);
+    var at = resolve(m.at);
     if (!at) return;
     if (m.t === 'go') {
       applying = true;
@@ -130,6 +162,7 @@ export function createLessonSession(o) {
   }
   function applyMode(m) {
     st.lock = m.lock; st.eng = m.eng; S.flipped = m.flip;
+    if (typeof m.hide === 'boolean') st.hide = m.hide;
     if (!st.eng && H.engineOff) H.engineOff();
   }
   function syncItem() {
@@ -164,6 +197,7 @@ export function createLessonSession(o) {
     if (m.t === 'mv') {
       if (!P.applyMoveAt(S.root, m.at, m.san)) { resync(); return; }
     } else {
+      if (m.t === 'view') st.hide = m.hide;
       var root = P.parseTree(st.doc.fen, m.mt);
       if (!root) { resync(); return; }
       S.root = root;
@@ -236,6 +270,18 @@ export function createLessonSession(o) {
       sendMode();
     },
     flipChanged: sendMode,
+    // coach: "Решение: скрыто / показано" for everyone at once
+    setHidden: function (h) {
+      if (!isCoach || !st.open || !st.doc || st.hide === !!h) return;
+      st.hide = !!h;
+      lastMt = project();
+      mirror = st.hide ? null : P.parseTree(st.doc.fen, lastMt);
+      st.rev++;
+      clearTimeout(curTimer);
+      T.sendCoach('view', { d: st.doc.id, rev: st.rev, hide: st.hide, mt: lastMt, cur: curPath(), dw: draw() });
+    },
+    // coach's own move list while hidden: the same part the students see
+    visibleIds: function () { return isCoach && st.open && st.hide ? P.visibleIds(S.root, S.cur, original) : null; },
     proposeMove: proposeMove,
     // coach: end for everyone; student: leave
     end: function () { if (isCoach && st.open) T.sendCoach('end', {}); finish(isCoach ? 'ended' : 'left'); },

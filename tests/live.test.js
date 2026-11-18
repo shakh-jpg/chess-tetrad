@@ -91,6 +91,8 @@ describe('lesson session (coach -> students)', () => {
     cS = makeS('1. e4 e5');
     coach = createLessonSession({ role: 'c', transport: createBusTransport(bus), S: cS, me: { k: 'c', n: 'Тренер' }, coachName: 'Тренер', hooks: hooks() });
     await coach.start();
+    expect(coach.state.hide).toBe(true); // a record with moves ahead opens with the solution hidden
+    coach.setHidden(false);              // these tests are about the full tree
     students = [];
     for (const nick of ['Петя', 'Маша']) {
       const S = makeS('');
@@ -205,6 +207,7 @@ describe('lesson session (coach -> students)', () => {
     const c2S = makeS('1. d4 {текст книги} d5');
     const c2 = createLessonSession({ role: 'c', transport: createBusTransport(c2bus), S: c2S, me: { k: 'c', n: 'Т' }, hooks: hooks({ isOwnItem: () => false }) });
     await c2.start();
+    c2.setHidden(false);
     const sS = makeS('');
     const s2 = createLessonSession({ role: 's', transport: createBusTransport(c2bus), S: sS, me: { k: 's', n: 'С' }, hooks: hooks() });
     await s2.start();
@@ -222,6 +225,8 @@ describe('lesson session (coach -> students)', () => {
     coach.docChanged();
     const p = students[0];
     expect(p.S.item.type).toBe('puzzle');
+    expect(text(p.S)).toBe(''); // the puzzle opens with the solution hidden
+    coach.setHidden(false);
     expect(text(p.S)).toBe('1. Rd8#');
     coach.end();
     for (const { h } of students) expect(h.ended).toHaveBeenCalledWith('ended');
@@ -306,5 +311,90 @@ describe('Supabase transport', () => {
     expect(lessonsMissing(new Error('Could not find the function public.start_lesson(p_students) in the schema cache'))).toBe(true);
     expect(lessonsMissing({ code: 'PGRST202' })).toBe(true);
     expect(lessonsMissing(new Error('Failed to fetch'))).toBe(false);
+  });
+});
+
+describe('lesson session: "Решение: скрыто / показано"', () => {
+  const FEN = '6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1';
+  let bus, cS, coach, sS, stu, wire;
+  beforeEach(async () => {
+    vi.useFakeTimers();
+    bus = createMemoryBus();
+    wire = [];
+    const post = bus.post;
+    bus.post = (m) => { if (m.ch === 'c' && m.payload) wire.push(JSON.stringify(m.payload)); post(m); };
+    cS = makeS('1. Rd8# (1. Rd7 h6 2. Rd8+) 1-0', FEN);
+    cS.item.type = 'puzzle';
+    coach = createLessonSession({ role: 'c', transport: createBusTransport(bus), S: cS, me: { k: 'c', n: 'Т' }, hooks: hooks({ isOwnItem: () => false }) });
+    await coach.start();
+    sS = makeS('');
+    stu = createLessonSession({ role: 's', transport: createBusTransport(bus), S: sS, me: { k: 's', n: 'С' }, hooks: hooks() });
+    await stu.start();
+    vi.advanceTimersByTime(1100);
+  });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('hidden by default for a record with moves ahead: the student gets no future moves at all', () => {
+    expect(coach.state.hide).toBe(true);
+    expect(stu.state.hide).toBe(true);
+    expect(sS.item.type).toBe('puzzle');
+    expect(text(sS)).toBe('');
+    // nothing of the solution went over the wire (not even in the full state)
+    expect(wire.join(' ')).not.toMatch(/Rd8|Rd7/);
+    // the coach's own list shows the same part
+    expect(Object.keys(coach.visibleIds())).toEqual([String(cS.root.id)]);
+  });
+
+  it('"показано" sends the whole tree at once; "скрыто" takes it back', () => {
+    coach.setHidden(false);
+    expect(stu.state.hide).toBe(false);
+    expect(text(sS)).toBe('1. Rd8# (1. Rd7 h6 2. Rd8+)');
+    expect(coach.visibleIds()).toBeNull();
+    coach.setHidden(true);
+    expect(text(sS)).toBe('');
+    expect(stu.state.hide).toBe(true);
+  });
+
+  it('while hidden: moves up to the current one are shown; moves made in the lesson are shown', () => {
+    // the coach steps into the variation: that path becomes visible, the main solution does not
+    cS.cur = cS.root.kids[1].kids[0]; coach.curChanged(); vi.advanceTimersByTime(100);
+    expect(text(sS)).toBe('1. Rd7 h6');
+    expect(P.nodePath(sS.cur)).toEqual([0, 0]);
+    // back to the start: hidden again
+    cS.cur = cS.root; coach.curChanged(); vi.advanceTimersByTime(100);
+    expect(text(sS)).toBe('');
+    // a new move made in the lesson stays visible
+    cS.cur = Core.tryMove(cS.root, 'g3').node; coach.treeChanged();
+    cS.cur = cS.root; coach.curChanged(); vi.advanceTimersByTime(100);
+    expect(text(sS)).toBe('1. g3');
+  });
+
+  it("a student's request uses the student's (visible) tree; guessing the solution reveals that move only", () => {
+    coach.setMode({ lock: false });
+    cS.cur = Core.tryMove(cS.root, 'g3').node; coach.treeChanged();         // visible: 1. g3
+    cS.cur = cS.root; coach.curChanged(); vi.advanceTimersByTime(100);
+    expect(text(sS)).toBe('1. g3');
+    sS.cur = sS.root;
+    stu.proposeMove({ from: 'd1', to: 'd8' });                                // the right move
+    expect(cS.cur).toBe(cS.root.kids[0]);                                     // the coach's existing node
+    expect(text(sS)).toBe('1. Rd8# (1. g3)');
+    expect(text(sS)).not.toMatch(/Rd7/);
+    expect(text(cS)).toBe('1. Rd8# (1. Rd7 h6 2. Rd8+) (1. g3)');            // the coach's tree is untouched
+  });
+
+  it('after the lesson: the coach keeps the full record, the student what was shown', () => {
+    cS.cur = cS.root.kids[0]; coach.curChanged(); vi.advanceTimersByTime(100);
+    coach.end();
+    expect(coach.snapshot().docs[0].mt).toBe('1. Rd8# (1. Rd7 h6 2. Rd8+)');
+    expect(stu.snapshot().docs[0].mt).toBe('1. Rd8#');
+  });
+
+  it('protocol: the "view" message is validated like the others', () => {
+    expect(P.parseCoachMsg('view', { d: 'abcd1234', rev: 3, hide: true, mt: '', cur: [] })).toMatchObject({ t: 'view', hide: true });
+    expect(P.parseCoachMsg('view', { d: 'abcd1234', rev: 3, hide: 'yes', mt: '', cur: [] })).toBeNull();
+    expect(P.parseCoachMsg('view', { d: 'abcd1234', rev: 3, hide: false, mt: 5, cur: [] })).toBeNull();
+    expect(P.parseCoachMsg('view', { d: 'abcd1234', rev: 3, hide: false, mt: 'x'.repeat(70000), cur: [] })).toBeNull();
+    expect(P.parseCoachMsg('state', { doc: { id: 'abcd1234', fen: FEN }, rev: 1, mt: '', cur: [], hide: 1 }).hide).toBe(false);
+    expect(P.parseStudentMsg('view', { d: 'abcd1234', rev: 1, at: [], hide: false })).toBeNull(); // students cannot switch it
   });
 });

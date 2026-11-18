@@ -90,20 +90,51 @@ export function applyMoveAt(root, path, san) {
 }
 
 /**
- * Movetext of the tree for the students. Comments that came from a book (bookComments: node id ->
- * original comment) are left out; comments the coach wrote or changed are sent.
- * @param {any} root @param {Record<string, string>|null} bookComments
+ * Copy of the tree for the students: book comments (bookComments: node id -> original comment) are
+ * left out (comments the coach wrote or changed stay); with `visible` (node id -> true) only those
+ * nodes are copied — the hidden solution never leaves the coach's device.
+ * Every copy has .orig (the coach's node); map: coach's node id -> copy.
+ * @param {any} root @param {{bookComments?: Record<string, string>|null, visible?: Record<string, boolean>|null}} [o]
  */
-export function lessonMovetext(root, bookComments) {
-  if (!bookComments) return Core.toMovetext(root);
+export function projectTree(root, o) {
+  var book = (o && o.bookComments) || null, vis = (o && o.visible) || null;
+  /** @type {Record<string, any>} */
+  var map = {};
   /** @param {any} n @param {any} parent */
   function clone(n, parent) {
-    var c = Object.assign({}, n, { parent: parent, kids: [] });
-    if (n.comment && bookComments && bookComments[n.id] === n.comment) c.comment = '';
-    c.kids = n.kids.map(function (/** @type {any} */ k) { return clone(k, c); });
+    var c = Object.assign({}, n, { parent: parent, kids: [], orig: n });
+    if (n.comment && book && book[n.id] === n.comment) c.comment = '';
+    map[n.id] = c;
+    c.kids = n.kids.filter(function (/** @type {any} */ k) { return !vis || vis[k.id]; }).map(function (/** @type {any} */ k) { return clone(k, c); });
     return c;
   }
-  return Core.toMovetext(clone(root, null));
+  return { root: clone(root, null), map: map };
+}
+/** Movetext for the students (book comments left out). @param {any} root @param {Record<string, string>|null} bookComments */
+export function lessonMovetext(root, bookComments) {
+  return Core.toMovetext(projectTree(root, { bookComments: bookComments }).root);
+}
+/**
+ * "Solution hidden": the moves from the root to the current one, plus the moves made during the
+ * lesson (not in `original`, the node ids present when the record was opened) and their parents.
+ * @param {any} root @param {any} cur @param {Record<string, boolean>} original
+ */
+export function visibleIds(root, cur, original) {
+  /** @type {Record<string, boolean>} */
+  var vis = {};
+  /** @param {any} n */
+  function up(n) { while (n && !vis[n.id]) { vis[n.id] = true; n = n.parent; } }
+  up(cur);
+  (function walk(n) { if (!original[n.id]) up(n); n.kids.forEach(walk); })(root);
+  vis[root.id] = true;
+  return vis;
+}
+/** Ids of all nodes. @param {any} root */
+export function allIds(root) {
+  /** @type {Record<string, boolean>} */
+  var out = {};
+  (function walk(n) { out[n.id] = true; n.kids.forEach(walk); })(root);
+  return out;
 }
 /** Comments present when a book item is opened in the lesson. @param {any} root */
 export function collectComments(root) {
@@ -130,10 +161,10 @@ export function parseCoachMsg(evt, payload) {
     return {
       t: 'state', doc: { id: p.doc.id, fen: p.doc.fen, type: p.doc.type === 'puzzle' ? 'puzzle' : 'game', title: cleanText(p.doc.title, LIMITS.title) || 'Урок' },
       rev: p.rev, mt: p.mt, cur: cur, dw: cleanDraw(p.dw),
-      lock: p.lock !== false, eng: p.eng === true, flip: p.flip === true, coach: cleanText(p.coach, 60)
+      lock: p.lock !== false, eng: p.eng === true, flip: p.flip === true, hide: p.hide === true, coach: cleanText(p.coach, 60)
     };
   }
-  if (n > (evt === 'tree' ? LIMITS.bigMsg : LIMITS.smallMsg)) return null;
+  if (n > (evt === 'tree' || evt === 'view' ? LIMITS.bigMsg : LIMITS.smallMsg)) return null;
   if (evt === 'mode') return { t: 'mode', lock: p.lock !== false, eng: p.eng === true, flip: p.flip === true };
   if (evt === 'end') return { t: 'end' };
   if (!DOC_ID.test(p.d) || !isInt(p.rev, 0, 1e9)) return null;
@@ -148,6 +179,11 @@ export function parseCoachMsg(evt, payload) {
   if (evt === 'tree') {
     if (typeof p.mt !== 'string') return null;
     return { t: 'tree', d: p.d, rev: p.rev, mt: p.mt, cur: path, dw: cleanDraw(p.dw) };
+  }
+  // "Решение: скрыто / показано" switched: the new tree (only the visible part when hidden)
+  if (evt === 'view') {
+    if (typeof p.mt !== 'string' || typeof p.hide !== 'boolean') return null;
+    return { t: 'view', d: p.d, rev: p.rev, hide: p.hide, mt: p.mt, cur: path, dw: cleanDraw(p.dw) };
   }
   return null;
 }
