@@ -2,13 +2,16 @@
 // Comments come from books/PGN/backups/the cloud, so every text value is escaped.
 import { esc } from './util.js';
 
-// root: tree root; cur: current node; limit: set of visible node ids (solve mode) or null;
+// root: tree root; cur: current node; limit: set of visible node ids (solve mode, or the
+// lesson with the solution hidden) or null — only those nodes are shown, variations included;
 // fmt: SAN formatter (figurine / Russian / English).
 export function movesHTML(root, cur, limit, fmt) {
   if (!root.kids.length) return '<p class="empty-note">Ходов пока нет. Сделайте ход на доске, он сохранится в этой записи.</p>';
-  if (limit && cur === root) return '<p class="empty-note">Решение скрыто. Ваши ходы появятся здесь.</p>';
-  function line(first) {
-    var html = '', node = first, needNum = true;
+  function shown(n) { return !limit || !!limit[n.id]; }
+  function first(n) { for (var i = 0; i < n.kids.length; i++) if (shown(n.kids[i])) return n.kids[i]; return null; }
+  if (limit && !first(root)) return '<p class="empty-note">Решение скрыто. Ваши ходы появятся здесь.</p>';
+  function line(start) {
+    var html = '', node = start, needNum = true;
     while (node) {
       if (limit && !limit[node.id]) break;
       var num = node.color === 'w' ? node.num + '.' : (needNum ? node.num + '…' : '');
@@ -17,13 +20,14 @@ export function movesHTML(root, cur, limit, fmt) {
       needNum = false;
       if (node.comment) { html += '<span class="cm">' + esc(node.comment) + '</span> '; needNum = true; }
       var par = node.parent;
-      if (!limit && par && par.kids[0] === node && par.kids.length > 1) {
-        for (var i = 1; i < par.kids.length; i++) html += '<div class="var">' + line(par.kids[i]) + '</div>';
+      var sib = par ? par.kids.filter(shown) : [];
+      if (par && sib[0] === node && sib.length > 1) {
+        for (var i = 1; i < sib.length; i++) html += '<div class="var">' + line(sib[i]) + '</div>';
         needNum = true;
       }
-      node = node.kids[0];
+      node = first(node);
     }
     return html;
   }
-  return line(root.kids[0]);
+  return line(first(root));
 }

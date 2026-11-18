@@ -249,7 +249,7 @@ import { solutionLocked } from '../sync/model.js';
     var limit = null;
     if (S.mode === 'solve' && S.solve && !S.solve.done) {
       limit = {}; var n = S.cur; while (n) { limit[n.id] = 1; n = n.parent; }
-    }
+    } else limit = Live.visibleIds(); // lesson, solution hidden: the coach sees what the students see
     function reg(n) { S.nodes[n.id] = n; n.kids.forEach(reg); } reg(S.root);
     host.innerHTML = movesHTML(S.root, S.cur, limit, fmt); // ui/moves-view.js (escaped)
     var cur = $('.mv.cur', host);

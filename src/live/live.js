@@ -19,7 +19,7 @@ var NOT_ENABLED = 'Онлайн-урок ещё не включён в обла�
 export function createLive(ctx) {
   var S = ctx.S, toast = ctx.toast, openModal = ctx.openModal;
   var backend = null, session = null, lesson = null, offer = null, resume = null;
-  var inited = false, pollTimer = null, saveTimer = null, engineToastShown = false, polling = false, leaveMsg = '', endedIds = {};
+  var inited = false, pollTimer = null, saveTimer = null, engineToastShown = false, polling = false, leaveMsg = '', endedIds = {}, peek = false;
 
   function role() { return backend ? backend.role() : 'none'; }
   function studentIn() { return !!(session && session.state.role === 's' && session.state.open); }
@@ -211,12 +211,15 @@ export function createLive(ctx) {
         '<button class="btn' + (s.lock ? ' on' : '') + '" data-live="lock" aria-pressed="' + s.lock + '">Ходит только тренер</button>' +
         '<button class="btn' + (!s.lock ? ' on' : '') + '" data-live="unlock" aria-pressed="' + !s.lock + '">Тренер и ученики</button></span>' +
         '<button class="btn' + (s.eng ? ' on' : '') + '" data-live="eng" aria-pressed="' + s.eng + '">' + (s.eng ? 'Движок ученикам: можно' : 'Движок ученикам: нельзя') + '</button>' +
+        '<button class="btn' + (s.hide ? ' on' : '') + '" data-live="hide" aria-pressed="' + s.hide + '">' + (s.hide ? 'Решение: скрыто' : 'Решение: показано') + '</button>' +
+        (s.hide ? '<button class="btn' + (peek ? ' on' : '') + '" data-live="peek" aria-pressed="' + peek + '" title="Только на вашем экране">' + (peek ? 'Спрятать у меня' : 'Показать мне') + '</button>' : '') +
         '<button class="btn" data-live="end">Закончить урок</button></div>';
     } else if (studentIn()) {
       var t = session.state, msg = [];
       if (!t.synced) msg.push('Загружаю доску тренера…');
       msg.push(t.lock ? 'Сейчас ходит только тренер.' : 'Можно ходить вместе с тренером.');
       if (!t.eng) msg.push('Движок выключен тренером.');
+      if (t.hide) msg.push('Решение скрыто.');
       if (t.status === 'denied') msg.push('Нет доступа к уроку.');
       else if (t.status !== 'online') msg.push('Нет связи, переподключаюсь…');
       else if (!t.coachHere) msg.push('Тренер сейчас не на связи.');
@@ -244,6 +247,13 @@ export function createLive(ctx) {
       if (!coachIn()) return;
       session.setMode({ eng: !session.state.eng }); bar();
       toast(session.state.eng ? 'Ученики могут включить движок.' : 'Движок у учеников выключен.');
+    } else if (a === 'hide') {
+      if (!coachIn()) return;
+      session.setHidden(!session.state.hide); peek = false; ctx.renderAll(); bar();
+      toast(session.state.hide ? 'Решение скрыто у всех.' : 'Решение показано всем.');
+    } else if (a === 'peek') {
+      if (!coachIn()) return;
+      peek = !peek; ctx.renderAll(); bar();
     } else if (a === 'end') { if (coachIn()) session.end(); }
     else if (a === 'leave') { if (studentIn()) session.end(); }
     else if (a === 'join') { join().catch(function () { toast('Не удалось подключиться к уроку.'); }); }
@@ -293,6 +303,8 @@ export function createLive(ctx) {
     init: init,
     setCloud: function (cloud) { if (!backend && cloud) setBackend(cloudBackend(cloud)); },
     engineBlocked: engineBlocked,
+    // the coach's move list while the solution is hidden (null: show everything)
+    visibleIds: function () { return coachIn() && !peek ? session.visibleIds() : null; },
     blocked: blocked,
     editBlocked: editBlocked,
     isOn: function () { return coachIn() || (studentIn() && session.state.synced); },
@@ -306,7 +318,7 @@ export function createLive(ctx) {
     itemLeaving: function () { if (coachIn()) session.itemLeaving(); },
     itemLoaded: function () {
       if (!inited) return;
-      if (coachIn()) { session.docChanged(); storeSoon(); bar(); return; }
+      if (coachIn()) { session.docChanged(); peek = false; storeSoon(); ctx.renderAll(); bar(); return; }
       if (studentIn()) { leaveMsg = 'Вы открыли свою запись и вышли из урока (вернуться — «Присоединиться»).'; session.end(); }
     },
     // the student's move during the lesson is a request to the coach
