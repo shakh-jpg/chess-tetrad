@@ -103,6 +103,19 @@ h2, h3 { margin: 0; font-family: var(--f-text); font-weight: 600; text-wrap: bal
 .livebar { background: var(--good-soft); }
 .dot-live { width: 10px; height: 10px; border-radius: 50%; background: var(--good); animation: pulse 1.6s infinite; }
 @keyframes pulse { 50% { opacity: .35; } }
+/* online lesson panel (live/live.js) */
+.lv-seg { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.lv-lbl { color: var(--muted); }
+.lv-pick { display: grid; gap: 6px; margin: 8px 0; max-height: 50vh; overflow: auto; }
+@media (max-width: 899px) {
+  /* compact on phones: one line of text, then the toggles and "end" in a 2-column grid */
+  .livebar { gap: 6px 8px; padding: 8px 10px; }
+  .livebar .lv-who { flex: 1 1 100%; font-size: 13px; }
+  .lv-act { margin-left: 0; width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .lv-act .btn { min-width: 0; min-height: 40px; padding: 6px 8px; white-space: normal; line-height: 1.2; }
+  .lv-seg { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; }
+  .lv-lbl { display: none; }
+}
 .board-row { display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: 10px; width: min(100%, calc(100dvh - 300px)); min-width: min(100%, 280px); margin-inline: auto; }
 .evalbar { position: relative; background: #17212B; border-radius: 3px; overflow: hidden; }
 .evalbar i { position: absolute; left: 0; right: 0; bottom: 0; height: 50%; background: #F4F7FA; transition: height .35s; }

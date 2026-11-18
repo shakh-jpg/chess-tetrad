@@ -108,6 +108,15 @@ test('online lesson: coach leads, student follows, moves when allowed, lesson sa
   await C.locator('[data-act="flip"]').first().click();
   await expect.poll(() => St.evaluate(() => window.__app.S.flipped)).toBe(true);
 
+  // the coach draws an arrow (drawing mode): the student sees it; the student cannot draw
+  await C.locator('#btn-draw').click();
+  const box = await C.locator('#board svg').boundingBox();
+  const at = (sq) => { const f = 'abcdefgh'.indexOf(sq[0]), r = +sq[1]; return [box.x + (7 - f + 0.5) * box.width / 8, box.y + (r - 1 + 0.5) * box.height / 8]; }; // flipped board
+  await C.mouse.move(...at('d1')); await C.mouse.down(); await C.mouse.move(...at('h5'), { steps: 4 }); await C.mouse.up();
+  await expect(C.locator('#board svg .arrow.draw')).toHaveCount(1);
+  await expect(St.locator('#board svg .arrow.draw')).toHaveCount(1);
+  await C.locator('#btn-draw').click();
+
   // the coach records a new game during the lesson: the student's board switches to it
   await C.locator('#btn-newgame').click();
   await C.locator('#rh-white').fill('Тренер');
@@ -246,4 +255,48 @@ test('coach\'s set with "allow the solution": the usual buttons', async ({ page 
   await expect(ban.locator('[data-act="analyse"]')).toBeVisible();
   await expect(ban.locator('[data-act="skip"]')).toHaveCount(0);
   expect(errors).toEqual([]);
+});
+
+test('phone 375x812: the lesson panel fits, buttons are reachable', async ({ browser }) => {
+  const R = makeRelay();
+  const phone = { viewport: { width: 375, height: 812 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, colorScheme: 'dark' };
+  const mk = async (cfg) => {
+    const context = await browser.newContext(phone);
+    const page = await context.newPage();
+    await context.exposeBinding('__relayPost', (_s, msg) => R.relay(page, msg));
+    await page.addInitScript((c) => {
+      const subs = [];
+      window.__relayDeliver = (m) => subs.slice().forEach((cb) => cb(m));
+      window.__tetradLiveTest = Object.assign(c, { bus: { post: (m) => { window.__relayPost(m); }, subscribe: (cb) => { subs.push(cb); return () => subs.splice(subs.indexOf(cb), 1); } } });
+    }, cfg);
+    return { context, page };
+  };
+  const coach = await mk({ role: 'coach', profile: { display_name: 'Тренер' }, students: [{ id: 's1', nick: 'Петя', bound_at: 'x' }] });
+  const student = await mk({ role: 'student', profile: { nick: 'Петя', student_id: 's1' } });
+  R.pages.push(coach.page, student.page);
+  const C = coach.page, St = student.page;
+  const cErr = await openApp(C), sErr = await openApp(St);
+  await C.locator('#btn-menu').click();
+  await C.locator('#btn-live').click();
+  await C.locator('#lv-go').click();
+  await St.evaluate((id) => { window.__tetradLiveTest.offer = { lesson_id: id, coach_name: 'Тренер' }; return window.__tetradLiveTest.poll(); }, LESSON);
+  await St.locator('[data-live="join"]').click();
+  await expect(C.locator('#livebar')).toContainText('В уроке: Петя');
+  await expect(St.locator('#livebar')).toContainText('Сейчас ходит только тренер');
+  await C.screenshot({ path: 'test-results/phone-lesson-coach.png' });
+  await St.screenshot({ path: 'test-results/phone-lesson-student.png' });
+  for (const p of [C, St]) {
+    // nothing sticks out to the side; every lesson button is at least 40 px high and on screen
+    expect(await p.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+    for (const b of await p.locator('#livebar button').all()) {
+      const bb = await b.boundingBox();
+      expect(bb.height).toBeGreaterThanOrEqual(36);
+      expect(bb.x).toBeGreaterThanOrEqual(0);
+      expect(bb.x + bb.width).toBeLessThanOrEqual(375);
+    }
+  }
+  await C.screenshot({ path: 'test-results/phone-lesson-coach.png' });
+  await St.screenshot({ path: 'test-results/phone-lesson-student.png' });
+  expect(cErr).toEqual([]); expect(sErr).toEqual([]);
+  await coach.context.close(); await student.context.close();
 });

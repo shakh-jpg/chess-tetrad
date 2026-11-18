@@ -208,9 +208,9 @@ export function createLive(ctx) {
       var net = s.status === 'denied' ? ' Нет доступа к каналу урока: проверьте настройки облака.' : s.status !== 'online' ? ' Нет связи, переподключаюсь…' : '';
       html = '<span class="dot-live"></span><strong>Урок идёт</strong><span class="lv-who">' + (kids.length ? 'В уроке: ' + esc(kids.join(', ')) + '.' : 'Ученики ещё не подключились.') + esc(net) + '</span>' +
         '<div class="ban-act lv-act"><span class="seg lv-seg" role="group" aria-label="Кто двигает фигуры"><span class="lv-lbl">Двигает:</span>' +
-        '<button class="btn' + (s.lock ? ' on' : '') + '" data-live="lock" aria-pressed="' + s.lock + '">только тренер</button>' +
-        '<button class="btn' + (!s.lock ? ' on' : '') + '" data-live="unlock" aria-pressed="' + !s.lock + '">тренер и ученики</button></span>' +
-        '<button class="btn' + (s.eng ? ' on' : '') + '" data-live="eng" aria-pressed="' + s.eng + '">' + (s.eng ? 'Движок у учеников: разрешён' : 'Движок у учеников: выключен') + '</button>' +
+        '<button class="btn' + (s.lock ? ' on' : '') + '" data-live="lock" aria-pressed="' + s.lock + '">Ходит только тренер</button>' +
+        '<button class="btn' + (!s.lock ? ' on' : '') + '" data-live="unlock" aria-pressed="' + !s.lock + '">Тренер и ученики</button></span>' +
+        '<button class="btn' + (s.eng ? ' on' : '') + '" data-live="eng" aria-pressed="' + s.eng + '">' + (s.eng ? 'Движок ученикам: можно' : 'Движок ученикам: нельзя') + '</button>' +
         '<button class="btn" data-live="end">Закончить урок</button></div>';
     } else if (studentIn()) {
       var t = session.state, msg = [];
