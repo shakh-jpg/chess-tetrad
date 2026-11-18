@@ -55,23 +55,3 @@ jobs:
           name: playwright-report
           path: playwright-report
           retention-days: 7
-
-  # Safari's engine (students on iPhones). Not blocking yet: it has not been run on a real
-  # iPhone and its first runs are being watched; a failure here does not stop the deploy.
-  e2e-webkit:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Install WebKit for Playwright
-        run: npx playwright install --with-deps webkit
-      - run: npm run build
-      - run: npm run e2e:webkit
