@@ -27,6 +27,9 @@ and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Coach's sets hide the solution until the puzzle is solved (no "Показать решение", free analysis,
   engine, "edit moves" or PGN export); "Пропустить" records it as not solved. The coach can tick
   "Разрешить показ решения" when assigning.
+- Lesson: "Решение: скрыто / показано" switch of the coach. A record with moves ahead opens hidden:
+  everyone sees only the moves up to the current one plus the moves made in the lesson; the hidden part
+  is not sent to students at all (new message `view`). "Показать мне" shows it on the coach's screen only.
 - Optional Playwright project `webkit` (Safari's engine), non-blocking CI job.
 
 ## [0.2.0] - 2026-11-15

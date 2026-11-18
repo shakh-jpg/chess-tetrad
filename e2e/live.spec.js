@@ -63,6 +63,9 @@ test('online lesson: coach leads, student follows, moves when allowed, lesson sa
   await St.locator('[data-live="join"]').click();
   await expect(St.locator('#livebar')).toContainText('Идёт урок · Тренер');
   await expect(C.locator('#livebar')).toContainText('В уроке: Петя');
+  await expect(C.locator('[data-live="hide"]')).toHaveText('Решение: скрыто'); // the book game opens hidden
+  await C.locator('[data-live="hide"]').click();
+  await expect(St.locator('#livebar')).not.toContainText('Решение скрыто');
   await expect(St.locator('#itemtitle')).toContainText('Легаль');
   expect(await movesOf(St)).toEqual(await movesOf(C));
   // the book's comment stays on the coach's screen only
@@ -164,6 +167,7 @@ test('online lesson: a student that reconnects gets the full board; leaving and 
   await St.evaluate((id) => { window.__tetradLiveTest.offer = { lesson_id: id, coach_name: 'Тренер' }; return window.__tetradLiveTest.poll(); }, LESSON);
   await St.locator('[data-live="join"]').click();
   await expect(St.locator('#itemtitle')).toContainText('Андерсен');
+  await C.locator('[data-live="hide"]').click(); // a game with moves ahead opens hidden; show it
 
   // the student leaves (saved), the coach goes on, the student joins again: full state arrives
   await St.locator('[data-live="leave"]').click();
@@ -297,6 +301,62 @@ test('phone 375x812: the lesson panel fits, buttons are reachable', async ({ bro
   }
   await C.screenshot({ path: 'test-results/phone-lesson-coach.png' });
   await St.screenshot({ path: 'test-results/phone-lesson-student.png' });
+  expect(cErr).toEqual([]); expect(sErr).toEqual([]);
+  await coach.context.close(); await student.context.close();
+});
+
+test('online lesson: the solution of a puzzle is hidden for everyone until the coach shows it', async ({ browser }) => {
+  const R = makeRelay();
+  const coach = await livePage(browser, { role: 'coach', profile: { display_name: 'Тренер' }, students: [{ id: 's1', nick: 'Петя', bound_at: 'x' }] }, R.relay);
+  const student = await livePage(browser, { role: 'student', profile: { nick: 'Петя', student_id: 's1' } }, R.relay);
+  R.pages.push(coach.page, student.page);
+  const cErr = await openApp(coach.page), sErr = await openApp(student.page);
+  const C = coach.page, St = student.page;
+  await C.locator('#btn-live').click();
+  await C.locator('#lv-go').click();
+  await St.evaluate((id) => { window.__tetradLiveTest.offer = { lesson_id: id, coach_name: 'Тренер' }; return window.__tetradLiveTest.poll(); }, LESSON);
+  await St.locator('[data-live="join"]').click();
+  await expect(C.locator('#livebar')).toContainText('В уроке: Петя');
+
+  // the coach opens a puzzle from the library: hidden by default, on both screens
+  R.log.length = 0;
+  await openItem(C, 'Задача 3');
+  await expect(St.locator('#itemtitle')).toContainText('Задача 3');
+  await expect(C.locator('[data-live="hide"]')).toHaveText('Решение: скрыто');
+  await expect(St.locator('#livebar')).toContainText('Решение скрыто');
+  await expect(St.locator('#moves .mv')).toHaveCount(0);
+  await expect(C.locator('#moves .mv')).toHaveCount(0);
+  // the student's "forward" does not reveal anything (the solution is not on the student's device)
+  await St.keyboard.press('End'); // the nav buttons are disabled while only the coach moves; the key does nothing either
+  await expect(St.locator('#moves .mv')).toHaveCount(0);
+  expect(await St.evaluate(() => window.__app.S.root.kids.length)).toBe(0);
+  // "Показать мне": only on the coach's screen
+  await C.locator('[data-live="peek"]').click();
+  await expect(C.locator('#moves .mv')).toHaveCount(1);
+  await expect(St.locator('#moves .mv')).toHaveCount(0);
+  await C.locator('[data-live="peek"]').click();
+  await expect(C.locator('#moves .mv')).toHaveCount(0);
+
+  // "показано": everyone sees the solution; "скрыто" again: hidden again
+  await C.locator('[data-live="hide"]').click();
+  await expect(C.locator('[data-live="hide"]')).toHaveText('Решение: показано');
+  await expect(St.locator('#moves .mv')).toHaveCount(1);
+  await expect(C.locator('#moves .mv')).toHaveCount(1);
+  await C.locator('[data-live="hide"]').click();
+  await expect(St.locator('#moves .mv')).toHaveCount(0);
+  await expect(C.locator('#moves .mv')).toHaveCount(0);
+  expect(R.log).toContain('c:view');
+
+  // the coach plays the solution move on the board: now it is a move of the lesson, visible to all
+  await move(C, 'g5', 'f7');
+  await expect(St.locator('#moves .mv')).toHaveCount(1);
+  await expect(St.locator('#moves .mv.cur')).toHaveText(/f7/);
+
+  // end: the coach keeps the full record, the student what was shown
+  await C.locator('[data-live="end"]').click();
+  await expect(St.locator('#toast')).toContainText('Тренер закончил урок');
+  const sBook = await St.evaluate(() => window.__app.S.books.find((b) => b.name === 'Уроки').items.map((i) => i.text));
+  expect(sBook.at(-1)).toBe('1. Nf7#');
   expect(cErr).toEqual([]); expect(sErr).toEqual([]);
   await coach.context.close(); await student.context.close();
 });
