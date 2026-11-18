@@ -41,14 +41,17 @@ export function createDataDialog(ctx) {
     return { add: add, rep: rep, skipped: r.skipped };
   }
   function openData() {
+    // a coach's set with hidden solutions is not exported to PGN (it would show the solutions)
+    var hidden = !!(ctx.solutionHidden && ctx.solutionHidden());
     var cnt = S.books.reduce(function (n, b) { return n + b.items.length; }, 0);
     var m = openModal('<h3>Данные</h3><p class="hint-note">Библиотека хранится только в этом браузере. Если очистить данные сайта или сменить браузер, она пропадёт. Храните копию отдельно. Сейчас в библиотеке: книг ' + S.books.length + ', записей ' + cnt + '.' + (Store.persistent ? '' : ' Хранилище браузера недоступно, всё лежит только до закрытия страницы.') +
       (/^(persisted|granted)$/.test(lsGet('st.persist', '')) ? ' Браузер разрешил хранить библиотеку постоянно.' : (Store.persistent ? ' Браузер может удалить данные, если на устройстве мало места.' : '')) + '</p>' +
       '<div class="data-list">' +
       '<button class="btn primary" id="dt-backup">Скачать копию библиотеки (JSON)</button>' +
       '<label class="btn"><input id="dt-restore" type="file" accept=".json,application/json" hidden>Загрузить копию библиотеки</label>' +
-      '<button class="btn" id="dt-pgn-book"' + (S.book ? '' : ' disabled') + '>PGN: вся книга «' + esc(S.book ? S.book.name : '') + '»</button>' +
-      '<button class="btn" id="dt-pgn-cur"' + (S.item ? '' : ' disabled') + '>PGN: текущая запись</button></div>' +
+      '<button class="btn" id="dt-pgn-book"' + (S.book && !hidden ? '' : ' disabled') + '>PGN: вся книга «' + esc(S.book ? S.book.name : '') + '»</button>' +
+      '<button class="btn" id="dt-pgn-cur"' + (S.item && !hidden ? '' : ' disabled') + '>PGN: текущая запись</button></div>' +
+      (hidden ? '<p class="hint-note">Набор тренера с закрытыми решениями в PGN не выгружается.</p>' : '') +
       '<p class="hint-note">PGN сохраняется как текстовый файл (.pgn.txt). Переименуйте его в .pgn, если программа требует. Ходы, варианты, комментарии и оценки сохраняются.</p>' +
       '<div id="dt-status" class="status"></div><div class="modal-act"><button class="btn" data-close>Закрыть</button></div>');
     var st = $('#dt-status', m.el);

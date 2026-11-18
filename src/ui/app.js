@@ -29,6 +29,7 @@ import { resultLabel } from './record.js';
 import { pliesLabel } from './plural.js';
 import { booksHTML, itemsHTML, filterItems } from './library.js';
 import { movesHTML } from './moves-view.js';
+import { solutionLocked } from '../sync/model.js';
 
   var activeEditor = null;
 
@@ -42,7 +43,8 @@ import { movesHTML } from './moves-view.js';
     S.flipped = item.startFen.split(' ')[1] === 'b' && item.type === 'puzzle';
     if (r.err && !silent) toast('Ход «' + r.err.token + '» нельзя сыграть после «' + r.err.before + '». Откройте «Править текст», чтобы исправить.', 'warn');
     lsSet('st.last', { b: book.id, i: item.id });
-    if (item.type === 'puzzle' && S.root.kids.length && !Live.isOn()) startSolve(); else { S.mode = 'analyse'; S.solve = null; }
+    // a coach's set without "allow the solution": always opens for solving
+    if (item.type === 'puzzle' && S.root.kids.length && (!Live.isOn() || solutionLocked(book, item))) startSolve(); else { S.mode = 'analyse'; S.solve = null; }
     // a game being recorded (maybe at the board, during play): engine and its arrows are off until switched on
     if (item.recorded) S.engineOn = false;
     if (window.innerWidth < 900) S.pane = 'board';
@@ -155,8 +157,10 @@ import { movesHTML } from './moves-view.js';
     S.hint = S.solve.hints === 1 ? { from: m.from } : { from: m.from, to: m.to };
     renderAll();
   }
+  // the solution of a puzzle from the coach's set stays hidden until it is solved
+  function lockedNow() { return solutionLocked(S.book, S.item) && S.mode === 'solve' && !!S.solve && !S.solve.done; }
   function showSolution() {
-    if (!S.solve) return;
+    if (!S.solve || lockedNow()) return;
     if (!S.solve.done) recordResult('fail');
     S.solve.done = true; S.hint = null; S.solve.msg = 'Решение показано.';
     var path = []; var n = S.solve.node; while (n.kids[0]) { n = n.kids[0]; path.push(n); }
@@ -168,7 +172,16 @@ import { movesHTML } from './moves-view.js';
     })();
   }
   function resetSolve() { if (S.item) { stopEngineRun(); startSolve(); renderAll(); } }
-  function toAnalysis() { S.mode = 'analyse'; S.hint = null; renderAll(); scheduleEngine(); }
+  function toAnalysis() { if (lockedNow()) return; S.mode = 'analyse'; S.hint = null; renderAll(); scheduleEngine(); }
+  // "Пропустить": the puzzle counts as not solved (the coach sees it in the progress); next puzzle
+  function skipPuzzle() {
+    if (!S.solve || S.solve.done) return;
+    recordResult('fail');
+    toast('Задача пропущена. Тренер увидит её как нерешённую.');
+    var was = S.item;
+    nextPuzzle();
+    if (S.item === was) resetSolve();
+  }
 
   // ================= навигация =================
   function go(node) {
@@ -256,7 +269,9 @@ import { movesHTML } from './moves-view.js';
       if (sv.done) {
         html = '<div class="ban good"><strong>' + esc(sv.msg || 'Готово') + '</strong><span>Можно разобрать позицию с движком или перейти дальше.</span><div class="ban-act"><button class="btn" data-act="resetsolve">Ещё раз</button><button class="btn" data-act="analyse">Анализ</button><button class="btn primary" data-act="nextpuzzle">Следующая задача</button></div></div>';
       } else {
-        html = '<div class="ban"><strong>' + side + ' начинают.</strong><span>' + esc(sv.msg || 'Найдите лучший ход.') + (sv.wrong ? ' Ошибок: ' + sv.wrong + '.' : '') + '</span><div class="ban-act"><button class="btn" data-act="hint">Подсказка</button><button class="btn" data-act="solution">Показать решение</button><button class="btn" data-act="analyse">Свободный анализ</button></div></div>';
+        var locked = solutionLocked(S.book, it);
+        html = '<div class="ban"><strong>' + side + ' начинают.</strong><span>' + esc(sv.msg || 'Найдите лучший ход.') + (sv.wrong ? ' Ошибок: ' + sv.wrong + '.' : '') + (locked ? ' Разбор и движок откроются, когда задача будет решена.' : '') + '</span><div class="ban-act"><button class="btn" data-act="hint">Подсказка</button>' +
+          (locked ? '<button class="btn" data-act="skip">Пропустить</button>' : '<button class="btn" data-act="solution">Показать решение</button><button class="btn" data-act="analyse">Свободный анализ</button>') + '</div></div>';
       }
     } else if (it && it.type === 'puzzle') {
       html = '<div class="ban"><strong>' + (S.root.kids.length ? 'Свободный анализ задачи.' : 'У задачи нет записанного решения.') + '</strong><span>' + (S.root.kids.length ? '' : 'Сыграйте решение на доске, оно сохранится. После этого можно включить режим решения.') + '</span><div class="ban-act">' + (S.root.kids.length ? '<button class="btn primary" data-act="resetsolve">Решать</button>' : '') + '</div></div>';
@@ -279,7 +294,8 @@ import { movesHTML } from './moves-view.js';
     var ih = $('#items'), book = S.book;
     $$('.chip').forEach(function (c) { c.classList.toggle('on', c.getAttribute('data-f') === S.filter); });
     if (!book) { ih.innerHTML = ''; return; }
-    ih.innerHTML = itemsHTML(filterItems(book.items, S.filter, S.q), S.item && S.item.id, S.q);
+    // the coach's set without "allow the solution": no "edit moves" button (it would show the solution)
+    ih.innerHTML = itemsHTML(filterItems(book.items, S.filter, S.q), S.item && S.item.id, S.q, { noEdit: solutionLocked(book, { type: 'puzzle' }) });
   }
 
   // ================= движок (оценка: engine/uci.js) =================
@@ -329,7 +345,7 @@ import { movesHTML } from './moves-view.js';
     }, 220);
   }
   function toggleEngine() {
-    if (!S.engineOn && S.mode === 'solve' && S.solve && !S.solve.done) { toast('Движок недоступен, пока вы решаете задачу. Нажмите «Показать решение» или «Свободный анализ».'); return; }
+    if (!S.engineOn && S.mode === 'solve' && S.solve && !S.solve.done) { toast(lockedNow() ? 'Движок откроется, когда задача будет решена.' : 'Движок недоступен, пока вы решаете задачу. Нажмите «Показать решение» или «Свободный анализ».'); return; }
     if (!S.engineOn && Live.engineBlocked()) { toast('Учитель отключил движок на время урока.'); return; }
     S.engineOn = !S.engineOn;
     if (S.engineOn) {
@@ -415,6 +431,7 @@ import { movesHTML } from './moves-view.js';
   var dialogCtx = {
     loadItem: loadItem, renderAll: renderAll, renderPane: renderPane, renderLibrary: renderLibrary, nextPuzzle: nextPuzzle,
     getDl: function () { return Dl; }, live: function () { return Live; },
+    solutionHidden: function () { return solutionLocked(S.book, { type: 'puzzle' }); },
     setActiveEditor: function (v) { activeEditor = v; },
     openScan: function (file) { return scanDialog.open(file); }
   };
@@ -553,7 +570,7 @@ import { movesHTML } from './moves-view.js';
         var act = a.getAttribute('data-act');
         if (act === 'hint') hintSolve(); else if (act === 'solution') showSolution();
         else if (act === 'analyse') toAnalysis(); else if (act === 'resetsolve') resetSolve();
-        else if (act === 'nextpuzzle') nextPuzzle(); else if (act === 'flip') { S.flipped = !S.flipped; renderBoard(); }
+        else if (act === 'nextpuzzle') nextPuzzle(); else if (act === 'skip') skipPuzzle(); else if (act === 'flip') { S.flipped = !S.flipped; renderBoard(); }
         else if (act === 'delmove') deleteFromHere(); else if (act === 'promote') promoteVariation();
         else if (act === 'copyfen') copyText(S.cur.fen, 'FEN скопирован');
         else if (act === 'cleardraw') clearDraw();

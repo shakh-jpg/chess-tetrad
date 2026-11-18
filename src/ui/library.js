@@ -27,7 +27,9 @@ export function filterItems(items, filter, q) {
 }
 
 // list: already filtered items; currentId: id of the open item; q: search text (sections are hidden while searching)
-export function itemsHTML(list, currentId, q) {
+// opts.noEdit: no "edit moves" button (a coach's set where the solution is hidden)
+export function itemsHTML(list, currentId, q, opts) {
+  var noEdit = !!(opts && opts.noEdit);
   if (!list.length) return '<p class="empty-note">Ничего не найдено.</p>';
   var searching = !!String(q || '').trim(), lastSec = null;
   return list.map(function (it) {
@@ -38,7 +40,7 @@ export function itemsHTML(list, currentId, q) {
       '<span class="tag ' + type + '">' + (type === 'puzzle' ? 'З' : 'П') + '</span>' +
       '<button class="it-main" data-open="' + id + '"><span class="it-title">' + esc(it.title) + '</span>' +
       '<span class="it-meta">' + num(it.plies) + ' п/х' + (it.err ? ' · <b class="warn">ошибка разбора</b>' : '') + statLabel(it) + '</span></button>' +
-      '<button class="icon-btn" data-edit="' + id + '" title="Править текст ходов" aria-label="Править">✎</button>' +
+      (noEdit ? '' : '<button class="icon-btn" data-edit="' + id + '" title="Править текст ходов" aria-label="Править">✎</button>') +
       '<button class="icon-btn" data-delitem="' + id + '" title="Удалить" aria-label="Удалить">×</button></div>';
   }).join('');
 }

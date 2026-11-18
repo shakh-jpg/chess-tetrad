@@ -271,6 +271,8 @@ export function initAccount(ctx) {
         return '<label class="chk"><input type="checkbox" data-s="' + esc(s.id) + '" checked> ' + esc(s.nick) + '</label>';
       }).join('') + '</div>' +
       '<label class="chk"><input type="checkbox" id="as-cm"> Отправить мои комментарии к ходам</label>' +
+      '<label class="chk"><input type="checkbox" id="as-sol"> Разрешить показ решения</label>' +
+      '<p class="hint-note">Без этой галочки ученик не видит решение и не может включить движок, пока не решит задачу сам; вместо «Показать решение» у него кнопка «Пропустить» (задача попадёт в «не решено»).</p>' +
       '<p class="hint-note">Отправляются позиции, ходы и варианты. Комментарии — только если это ваш собственный текст, не текст книги. Источник («' + esc(book.name) + '») подставится сам.</p>' +
       '<button class="btn primary" id="as-go">Назначить</button><p id="as-st" class="status"></p></div>';
     var boxes = Array.prototype.slice.call(panel.querySelectorAll('[data-i]'));
@@ -297,14 +299,14 @@ export function initAccount(ctx) {
       var items = Array.prototype.filter.call(panel.querySelectorAll('[data-i]'), function (c) { return c.checked; }).map(function (c) { return book.items[+c.getAttribute('data-i')]; });
       var sids = Array.prototype.filter.call(panel.querySelectorAll('[data-s]'), function (c) { return c.checked; }).map(function (c) { return c.getAttribute('data-s'); });
       if (!items.length || !sids.length) { status(st, 'bad', 'Выберите задачи и хотя бы одного ученика.'); return; }
-      var set = setFromBook(book, items, { title: panel.querySelector('#as-title').value, includeComments: panel.querySelector('#as-cm').checked });
+      var set = setFromBook(book, items, { title: panel.querySelector('#as-title').value, includeComments: panel.querySelector('#as-cm').checked, allowSolution: panel.querySelector('#as-sol').checked });
       status(st, '', 'Отправляю…');
       try {
         var sess = await api.session();
         await api.createSetAndAssign(sess.user.id, set, sids);
         ctx.toast('Назначено: ' + countLabel(items.length, 'запись', 'записи', 'записей') + ' · ' + countLabel(sids.length, 'ученик', 'ученика', 'учеников'));
         if (done) done();
-      } catch (e) { status(st, 'bad', errMsg(e)); }
+      } catch (e) { status(st, 'bad', /allow_solution/.test(String(e && e.message)) ? 'Показ решения ещё не включён в облаке (нужно обновление, см. инструкцию). Снимите галочку «Разрешить показ решения» или обновите облако.' : errMsg(e)); }
     });
   }
 

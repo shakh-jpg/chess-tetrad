@@ -57,6 +57,7 @@ export function sanitizeBook(b) {
   if (b.sample === true) out.sample = true;
   if (b.remote && typeof b.remote === 'object' && typeof b.remote.setId === 'string') {
     out.remote = { setId: str(b.remote.setId, 100), source: str(b.remote.source, 200) };
+    if (b.remote.allowSolution === true) out.remote.allowSolution = true;
   }
   return { book: out, skipped: skipped };
 }

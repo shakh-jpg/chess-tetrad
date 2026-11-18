@@ -56,6 +56,7 @@ export function setFromBook(book, items, opts) {
   return {
     title: clip(opts.title || book.name || 'Набор', 120) || 'Набор',
     source: clip(book.remote && book.remote.source ? book.remote.source : book.name, 200),
+    allowSolution: !!opts.allowSolution,
     rows: items.map(function (it, i) { return itemToRow(it, i, opts); })
   };
 }
@@ -110,13 +111,20 @@ export function mergeRemoteSet(local, set, progressRows, now) {
     id: REMOTE_PREFIX + set.id,
     name: clip(set.title, 120) || 'Набор',
     created: (local && local.created) || Date.parse(set.created_at) || now || Date.now(),
-    remote: { setId: set.id, source: set.source || '' },
+    remote: { setId: set.id, source: set.source || '', allowSolution: set.allow_solution === true },
     items: items
   };
   return { book: book, toPush: toPush };
 }
 
 export function isRemoteBook(book) { return !!(book && book.remote && book.remote.setId); }
+
+// A puzzle from the coach's set where the coach did not allow the solution: until it is solved,
+// no "Показать решение", no free analysis and no engine; only "Пропустить" (counts as not solved).
+// The student's own books and the coach's books are not affected.
+export function solutionLocked(book, item) {
+  return isRemoteBook(book) && !book.remote.allowSolution && !!item && item.type === 'puzzle';
+}
 
 // ---------- coach overview ----------
 // data: { students:[{id,nick,last_seen_at,user_id?}], assignments:[{set_id,student_id}],

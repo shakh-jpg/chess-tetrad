@@ -81,6 +81,7 @@ describe('lessons: start, who sees it, who can end it', () => {
     const row = (await db.query('select students, status from public.lessons where id = $1', [lesson])).rows[0];
     expect(row.status).toBe('live');
     expect(row.students.sort()).toEqual([s1, s2].sort());
+    expect(row.students).not.toContain(s3);
   });
 
   it('invited students see the lesson; the uninvited and someone else\'s student do not', async () => {

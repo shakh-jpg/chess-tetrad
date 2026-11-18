@@ -44,7 +44,10 @@ export function createApi(client, opts) {
 
     // set = { title, source, rows: [{position, kind, title, start_fen, movetext}] }
     createSetAndAssign: async function (coachId, set, studentIds) {
-      var created = unwrap(await client.from('sets').insert({ coach_id: coachId, title: set.title, source: set.source }).select('id').single());
+      var row = { coach_id: coachId, title: set.title, source: set.source };
+      // allow_solution comes with the 20261118 migration; it is sent only when the coach ticks it
+      if (set.allowSolution) row.allow_solution = true;
+      var created = unwrap(await client.from('sets').insert(row).select('id').single());
       var setId = created.id;
       if (set.rows.length) unwrap(await client.from('set_items').insert(set.rows.map(function (r) { return Object.assign({ set_id: setId }, r); })));
       if (studentIds.length) unwrap(await client.from('assignments').insert(studentIds.map(function (sid) { return { set_id: setId, student_id: sid }; })));
@@ -85,10 +88,13 @@ export function createApi(client, opts) {
     setStudentLogin: function (login, pass) { return rpc('set_student_login', { p_login: String(login || '').trim(), p_password: pass }); },
     myStudentLogin: async function () { try { return await rpc('my_student_login', {}); } catch (e) { return null; } },
     fetchAssigned: async function () {
+      var items = 'set_items(id, position, kind, title, start_fen, movetext)';
       var r = await Promise.all([
-        client.from('sets').select('id, title, source, created_at, set_items(id, position, kind, title, start_fen, movetext)'),
+        client.from('sets').select('id, title, source, created_at, allow_solution, ' + items),
         client.from('progress').select('item_id, n, ok, clean, fail, box, last_at, due_at, res')
       ]);
+      // before the 20261118 migration there is no allow_solution column (the solution stays hidden)
+      if (r[0].error && /allow_solution/.test(r[0].error.message || '')) r[0] = await client.from('sets').select('id, title, source, created_at, ' + items);
       return { sets: unwrap(r[0]) || [], progress: unwrap(r[1]) || [] };
     },
     pushProgress: function (rows) { return rpc('push_progress', { p_rows: rows }); }
